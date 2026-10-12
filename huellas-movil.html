@@ -315,6 +315,22 @@ footer.foot{padding:70px 0 120px;color:var(--ink-2)}
 .acct__stats b{font-family:var(--f-display);font-size:1.8rem;display:block;line-height:1}
 .acct__stats span{font-size:.8rem;color:var(--muted)}
 .acct__alerts{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.eauth{width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;text-align:left}
+.eauth__tabs{display:grid;grid-template-columns:1fr 1fr;padding:4px;border-radius:999px;background:var(--cream);gap:4px}
+.eauth__tabs button{padding:11px 10px;border-radius:999px;font-weight:700;font-size:.92rem;color:var(--ink-2);transition:.25s}
+.eauth__tabs button.on{background:var(--night);color:#fff;box-shadow:0 8px 18px -10px rgba(0,0,0,.5)}
+.eauth__pass{position:relative}
+.eauth__pass .input{padding-right:52px}
+.eauth__eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:40px;height:40px;border-radius:12px;font-size:1.1rem}
+.eauth__eye:hover{background:var(--line)}
+.eauth__go{justify-content:center;width:100%}
+.eauth__link{align-self:center;font-weight:600;font-size:.88rem;color:var(--orange);padding:6px}
+.eauth__link:hover{text-decoration:underline}
+.eauth__hint{color:var(--ink-2);font-size:.95rem;text-align:center}
+.eauth__msg,.eauth__ok{font-size:.9rem;padding:12px 14px;border-radius:14px;font-weight:600}
+.eauth__msg{background:rgba(255,77,77,.14);color:var(--red)}
+.eauth__ok{background:rgba(29,191,115,.15);color:var(--mint)}
+.eauth__or{font-size:.8rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.12em}
 .byline-img{width:16px;height:16px;border-radius:50%;vertical-align:-3px;margin-right:4px;display:inline-block}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .gbtn{--g-bg:#131314;--g-line:#8E918F;--g-fg:#E3E3E3}}
 :root[data-theme="dark"] .gbtn{--g-bg:#131314;--g-line:#8E918F;--g-fg:#E3E3E3}
@@ -518,8 +534,9 @@ window.HUELLAS_CONFIG = {
   // Dirección pública de la web. Google solo puede volver a una dirección web, así que el HTML
   // abierto como archivo (por ejemplo desde WhatsApp) abre esta página para iniciar sesión.
   siteUrl: 'https://azzaccell.github.io/Huellas/',
-  // Botón "Continuar con Google" (requiere activar el proveedor Google en Supabase).
-  googleLogin: true,
+  // Botón "Continuar con Google" (requiere activar el proveedor Google en Supabase). Desactivado por ahora:
+  // las cuentas se crean con correo y contraseña.
+  googleLogin: false,
   supabaseUrl: 'https://qxpyyxoontyrikgdokip.supabase.co',
   supabaseKey: 'sb_publishable_DRUdKM_Rl-Vtjh8g8Vw4_A_W5dSQd5Z',
 };
@@ -658,7 +675,7 @@ window.HUELLAS = (() => {
     ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, { auth: { persistSession: true, flowType: 'pkce', detectSessionInUrl: true } })
     : null;
 
-  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null, user: null, authBusy: false, hasAuthor: false, googleReady: null });
+  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null, user: null, authBusy: false, hasAuthor: false, googleReady: null, emailReady: null, autoconfirm: null, recovery: false });
   const notify = msg => H.onError && H.onError(msg);
   const liked = new Set(state.user.liked || []);
   const followed = new Set(state.user.followed || []);
@@ -750,6 +767,76 @@ window.HUELLAS = (() => {
     }
   }
 
+  // ---------- correo y contraseña ----------
+  const ES = [
+    [/invalid login credentials/i, 'Correo o contraseña incorrectos.'],
+    [/already (been )?registered|already exists|email_exists/i, 'Ese correo ya tiene cuenta. Entra con tu contraseña.'],
+    [/at least 6|weak_password|password should/i, 'La contraseña debe tener al menos 6 caracteres.'],
+    [/not confirmed/i, 'Confirma tu correo con el enlace que te enviamos y vuelve a intentar.'],
+    [/rate limit|too many|over_email_send/i, 'Demasiados intentos. Espera unos minutos y prueba de nuevo.'],
+    [/invalid.*email|unable to validate email/i, 'Ese correo no parece válido.'],
+    [/signups? not allowed|signup.*disabled/i, 'El registro con correo está desactivado en HUELLAS.'],
+    [/fetch|network/i, 'Sin conexión. Revisa tu internet.'],
+  ];
+  const es = e => { const m = (e && (e.code || '') + ' ' + (e.message || '')) || ''; const hit = ES.find(([rx]) => rx.test(m)); return hit ? hit[1] : (e && e.message) || 'Algo salió mal. Inténtalo de nuevo.'; };
+  const ready = () => { if (!sb || !status.online) throw new Error('Sin conexión. Revisa tu internet.'); };
+
+  // Crear cuenta: si hay sesión anónima, se le agrega correo y contraseña (lo publicado sigue siendo tuyo)
+  async function signUp({ name, email, password }) {
+    ready(); status.authBusy = true;
+    try {
+      const data = { full_name: name.trim() };
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      if (session && session.user.is_anonymous) {
+        res = await sb.auth.updateUser({ email: email.trim(), password, data });
+        if (res.error) throw res.error;
+        // con "Confirm email" activado, el correo queda pendiente hasta que se confirme
+        if (res.data.user && res.data.user.is_anonymous) return { pending: true };
+      } else {
+        res = await sb.auth.signUp({ email: email.trim(), password, options: { data, emailRedirectTo: cfg.siteUrl || redirectTo() } });
+        if (res.error) throw res.error;
+        if (!res.data.session) return { pending: true };
+      }
+      const s = (await sb.auth.getSession()).data.session;
+      setSession(s);
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
+  async function signIn({ email, password }) {
+    ready(); status.authBusy = true;
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) throw error;
+      setSession(data.session);
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
+  async function resetPassword(email) {
+    ready(); status.authBusy = true;
+    try {
+      const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: cfg.siteUrl || redirectTo() });
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
+  async function setNewPassword(password) {
+    ready(); status.authBusy = true;
+    try {
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) throw error;
+      status.recovery = false;
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
   async function logout() {
     if (!sb) return;
     status.authBusy = true;
@@ -774,9 +861,17 @@ window.HUELLAS = (() => {
       setSession(session);
       // ¿Está activado el proveedor Google en Supabase? (Authentication → Sign In / Providers)
       fetch(cfg.supabaseUrl + '/auth/v1/settings', { headers: { apikey: cfg.supabaseKey } })
-        .then(r => r.json()).then(s => { status.googleReady = !!(s.external && s.external.google); })
+        .then(r => r.json()).then(s => {
+          status.googleReady = !!(s.external && s.external.google);
+          status.emailReady = !(s.external && s.external.email === false) && !s.disable_signup;
+          status.autoconfirm = !!s.mailer_autoconfirm; // true = "Confirm email" desactivado
+        })
         .catch(() => { status.googleReady = false; });
-      sb.auth.onAuthStateChange((event, s) => { if (s) setSession(s); if (event === 'SIGNED_IN' && s && !s.user.is_anonymous) notify('👋 ¡Hola, ' + status.user.name + '!'); });
+      sb.auth.onAuthStateChange((event, s) => {
+        if (s) setSession(s);
+        if (event === 'PASSWORD_RECOVERY') { status.recovery = true; location.hash = '#/cuenta'; }
+        if (event === 'SIGNED_IN' && s && !s.user.is_anonymous && status.user) notify('👋 ¡Hola, ' + status.user.name + '!');
+      });
 
       const [reports, pets, comments] = await Promise.all([
         sb.from('reports').select('*').order('created_at', { ascending: false }).limit(500),
@@ -905,7 +1000,11 @@ window.HUELLAS = (() => {
   const actions = Object.fromEntries(Object.keys(local).map(k => [k, (...a) => (status.online ? remote : local)[k](...a)]));
   // ¿Puede esta persona editar la alerta/mascota? En local: siempre. En línea: solo si es suya.
   const canEdit = item => !status.online || !!item.mine;
-  const auth = { login: loginGoogle, logout, enabled: !!(sb && cfg.googleLogin), hosted, siteUrl: cfg.siteUrl || '' };
+  const auth = {
+    signUp, signIn, resetPassword, setNewPassword, logout,
+    login: loginGoogle, google: !!(sb && cfg.googleLogin),
+    enabled: !!sb, hosted, siteUrl: cfg.siteUrl || '',
+  };
 
   Object.assign(H, { actions, status, canEdit, auth });
   if (sb) connect();
@@ -1918,6 +2017,82 @@ app.component('page-pet', {
   </main>`,
 });
 
+/* Formulario de cuenta con correo y contraseña: crear cuenta / entrar / recuperar / nueva contraseña */
+app.component('email-auth', {
+  setup() {
+    const mode = ref(status.recovery ? 'nueva' : 'crear'); // crear | entrar | olvido | nueva
+    const f = reactive({ name: state.user.name || '', email: '', password: '' });
+    const show = ref(false), msg = ref(''), ok = ref('');
+    watch(() => status.recovery, v => { if (v) mode.value = 'nueva'; });
+    watch(mode, () => { msg.value = ''; ok.value = ''; });
+    const valid = computed(() => {
+      const mail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim());
+      if (mode.value === 'olvido') return mail;
+      if (mode.value === 'nueva') return f.password.length >= 6;
+      if (mode.value === 'crear') return mail && f.password.length >= 6 && f.name.trim().length >= 2;
+      return mail && f.password.length >= 1;
+    });
+    const submit = async () => {
+      msg.value = ''; ok.value = '';
+      if (!valid.value) {
+        msg.value = mode.value === 'crear' ? 'Escribe tu nombre, un correo válido y una contraseña de 6 caracteres o más.' : 'Revisa el correo y la contraseña.';
+        return;
+      }
+      try {
+        if (mode.value === 'crear') {
+          const r = await auth.signUp(f);
+          if (r.pending) ok.value = `Te enviamos un enlace a ${f.email}. Ábrelo para activar tu cuenta.`;
+          else toast('🎉 ¡Cuenta creada! Bienvenido a la manada');
+        } else if (mode.value === 'entrar') {
+          await auth.signIn(f);
+        } else if (mode.value === 'olvido') {
+          await auth.resetPassword(f.email);
+          ok.value = `Si ${f.email} tiene cuenta, te llegará un enlace para crear una contraseña nueva.`;
+        } else {
+          await auth.setNewPassword(f.password);
+          toast('🔑 Contraseña actualizada');
+        }
+        f.password = '';
+      } catch (e) { msg.value = e.message; }
+    };
+    const titles = { crear: 'Crear cuenta', entrar: 'Entrar', olvido: 'Enviar enlace', nueva: 'Guardar contraseña' };
+    return { mode, f, show, msg, ok, submit, status, titles };
+  },
+  template: `
+    <form class="eauth" @submit.prevent="submit" novalidate>
+      <div v-if="mode==='crear' || mode==='entrar'" class="eauth__tabs" role="tablist">
+        <button type="button" role="tab" :aria-selected="mode==='crear'" :class="{on:mode==='crear'}" @click="mode='crear'">Crear cuenta</button>
+        <button type="button" role="tab" :aria-selected="mode==='entrar'" :class="{on:mode==='entrar'}" @click="mode='entrar'">Ya tengo cuenta</button>
+      </div>
+      <p v-if="mode==='olvido'" class="eauth__hint">Escribe tu correo y te enviamos un enlace para crear una contraseña nueva.</p>
+      <p v-if="mode==='nueva'" class="eauth__hint">Elige tu contraseña nueva.</p>
+
+      <div class="field" v-if="mode==='crear'">
+        <label for="ea-name">Tu nombre</label>
+        <input id="ea-name" class="input" v-model="f.name" autocomplete="name" placeholder="Ej. Valeria Rojas" maxlength="60">
+      </div>
+      <div class="field" v-if="mode!=='nueva'">
+        <label for="ea-email">Correo</label>
+        <input id="ea-email" class="input" v-model="f.email" type="email" inputmode="email" autocomplete="email" placeholder="tucorreo@gmail.com">
+      </div>
+      <div class="field" v-if="mode!=='olvido'">
+        <label for="ea-pass">{{ mode==='nueva' ? 'Contraseña nueva' : 'Contraseña' }}</label>
+        <div class="eauth__pass">
+          <input id="ea-pass" class="input" v-model="f.password" :type="show ? 'text' : 'password'" :autocomplete="mode==='entrar' ? 'current-password' : 'new-password'" :placeholder="mode==='entrar' ? '' : 'Mínimo 6 caracteres'">
+          <button type="button" class="eauth__eye" @click="show=!show" :aria-label="show ? 'Ocultar contraseña' : 'Mostrar contraseña'">{{ show ? '🙈' : '👁️' }}</button>
+        </div>
+      </div>
+
+      <p v-if="msg" class="eauth__msg" role="alert">{{ msg }}</p>
+      <p v-if="ok" class="eauth__ok" role="status">{{ ok }}</p>
+
+      <button class="btn btn--orange eauth__go" :disabled="status.authBusy || status.connecting">{{ status.authBusy ? 'Un momento…' : titles[mode] }}</button>
+
+      <button v-if="mode==='entrar'" type="button" class="eauth__link" @click="mode='olvido'">¿Olvidaste tu contraseña?</button>
+      <button v-if="mode==='olvido'" type="button" class="eauth__link" @click="mode='entrar'">← Volver a entrar</button>
+    </form>`,
+});
+
 /* ===================== MI CUENTA ===================== */
 app.component('page-account', {
   setup() {
@@ -1927,7 +2102,7 @@ app.component('page-account', {
     const faces = computed(() => state.pets.filter(p => p.photo).slice(0, 5));
     const perks = [
       ['📱', 'Tu cuenta en todos tus dispositivos', 'Entra desde el celular o la compu y encuentra tus alertas y mascotas.'],
-      ['🪪', 'Tu nombre y foto en lo que publicas', 'Los vecinos saben quién avisa. Así se genera confianza.'],
+      ['🪪', 'Tu nombre en lo que publicas', 'Los vecinos saben quién avisa. Así se genera confianza.'],
       ['🔒', 'Solo tú editas lo tuyo', 'Marca a tu mascota como reunida o borra tus alertas cuando quieras.'],
     ];
     usePageFx(root, () => intro('.acct > *', { y: 40, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
@@ -1949,20 +2124,25 @@ app.component('page-account', {
         <div class="avatars acct__faces"><span v-for="p in faces" :key="p.id"><pet-media :item="p" /></span></div>
         <span class="eyebrow">Mi cuenta</span>
         <h1 class="h-lg">Únete a la <span class="hl">manada.</span></h1>
-        <p class="lead">Ver el mapa y publicar no requiere cuenta. Si entras con Google, tus publicaciones te acompañan a todas partes.</p>
+        <p class="lead">Ver el mapa y publicar no requiere cuenta. Con una cuenta, tus publicaciones te acompañan a todas partes.</p>
         <ul class="perks">
           <li v-for="p in perks" :key="p[1]"><span class="perks__ico">{{ p[0] }}</span><div><b>{{ p[1] }}</b><p>{{ p[2] }}</p></div></li>
         </ul>
-        <google-btn />
+        <email-auth />
+        <template v-if="auth.google"><span class="eauth__or">o</span><google-btn /></template>
         <a href="#/registrar" class="chip">🐶 o registra a tu mascota sin cuenta →</a>
-        <p class="acct__fine">Usamos tu nombre, foto y correo de Google. Tu correo nunca se muestra a otras personas.
-          <template v-if="myReports.length || myPets.length"><br>Lo que ya publicaste desde este dispositivo ({{ myReports.length + myPets.length }}) pasa a tu cuenta.</template>
+        <p class="acct__fine">Tu correo nunca se muestra a otras personas. Solo se ve el nombre que elijas.
+          <template v-if="myReports.length || myPets.length"><br>Lo que ya publicaste desde este dispositivo ({{ myReports.length + myPets.length }}) pasa a tu cuenta nueva.</template>
         </p>
-        <p v-if="!auth.hosted" class="acct__fine">Google solo puede volver a una página web, por eso el botón abre HUELLAS en tu navegador.</p>
       </section>
 
       <!-- con sesión -->
       <template v-else>
+        <section v-if="status.recovery" class="card acct__join">
+          <span class="eyebrow">Recuperar acceso</span>
+          <h2 class="h-md">Crea tu contraseña nueva</h2>
+          <email-auth />
+        </section>
         <section class="acct__head card">
           <user-avatar :size="88" />
           <div class="acct__who">

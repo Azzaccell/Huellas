@@ -1003,6 +1003,82 @@ app.component('page-pet', {
   </main>`,
 });
 
+/* Formulario de cuenta con correo y contraseña: crear cuenta / entrar / recuperar / nueva contraseña */
+app.component('email-auth', {
+  setup() {
+    const mode = ref(status.recovery ? 'nueva' : 'crear'); // crear | entrar | olvido | nueva
+    const f = reactive({ name: state.user.name || '', email: '', password: '' });
+    const show = ref(false), msg = ref(''), ok = ref('');
+    watch(() => status.recovery, v => { if (v) mode.value = 'nueva'; });
+    watch(mode, () => { msg.value = ''; ok.value = ''; });
+    const valid = computed(() => {
+      const mail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(f.email.trim());
+      if (mode.value === 'olvido') return mail;
+      if (mode.value === 'nueva') return f.password.length >= 6;
+      if (mode.value === 'crear') return mail && f.password.length >= 6 && f.name.trim().length >= 2;
+      return mail && f.password.length >= 1;
+    });
+    const submit = async () => {
+      msg.value = ''; ok.value = '';
+      if (!valid.value) {
+        msg.value = mode.value === 'crear' ? 'Escribe tu nombre, un correo válido y una contraseña de 6 caracteres o más.' : 'Revisa el correo y la contraseña.';
+        return;
+      }
+      try {
+        if (mode.value === 'crear') {
+          const r = await auth.signUp(f);
+          if (r.pending) ok.value = `Te enviamos un enlace a ${f.email}. Ábrelo para activar tu cuenta.`;
+          else toast('🎉 ¡Cuenta creada! Bienvenido a la manada');
+        } else if (mode.value === 'entrar') {
+          await auth.signIn(f);
+        } else if (mode.value === 'olvido') {
+          await auth.resetPassword(f.email);
+          ok.value = `Si ${f.email} tiene cuenta, te llegará un enlace para crear una contraseña nueva.`;
+        } else {
+          await auth.setNewPassword(f.password);
+          toast('🔑 Contraseña actualizada');
+        }
+        f.password = '';
+      } catch (e) { msg.value = e.message; }
+    };
+    const titles = { crear: 'Crear cuenta', entrar: 'Entrar', olvido: 'Enviar enlace', nueva: 'Guardar contraseña' };
+    return { mode, f, show, msg, ok, submit, status, titles };
+  },
+  template: `
+    <form class="eauth" @submit.prevent="submit" novalidate>
+      <div v-if="mode==='crear' || mode==='entrar'" class="eauth__tabs" role="tablist">
+        <button type="button" role="tab" :aria-selected="mode==='crear'" :class="{on:mode==='crear'}" @click="mode='crear'">Crear cuenta</button>
+        <button type="button" role="tab" :aria-selected="mode==='entrar'" :class="{on:mode==='entrar'}" @click="mode='entrar'">Ya tengo cuenta</button>
+      </div>
+      <p v-if="mode==='olvido'" class="eauth__hint">Escribe tu correo y te enviamos un enlace para crear una contraseña nueva.</p>
+      <p v-if="mode==='nueva'" class="eauth__hint">Elige tu contraseña nueva.</p>
+
+      <div class="field" v-if="mode==='crear'">
+        <label for="ea-name">Tu nombre</label>
+        <input id="ea-name" class="input" v-model="f.name" autocomplete="name" placeholder="Ej. Valeria Rojas" maxlength="60">
+      </div>
+      <div class="field" v-if="mode!=='nueva'">
+        <label for="ea-email">Correo</label>
+        <input id="ea-email" class="input" v-model="f.email" type="email" inputmode="email" autocomplete="email" placeholder="tucorreo@gmail.com">
+      </div>
+      <div class="field" v-if="mode!=='olvido'">
+        <label for="ea-pass">{{ mode==='nueva' ? 'Contraseña nueva' : 'Contraseña' }}</label>
+        <div class="eauth__pass">
+          <input id="ea-pass" class="input" v-model="f.password" :type="show ? 'text' : 'password'" :autocomplete="mode==='entrar' ? 'current-password' : 'new-password'" :placeholder="mode==='entrar' ? '' : 'Mínimo 6 caracteres'">
+          <button type="button" class="eauth__eye" @click="show=!show" :aria-label="show ? 'Ocultar contraseña' : 'Mostrar contraseña'">{{ show ? '🙈' : '👁️' }}</button>
+        </div>
+      </div>
+
+      <p v-if="msg" class="eauth__msg" role="alert">{{ msg }}</p>
+      <p v-if="ok" class="eauth__ok" role="status">{{ ok }}</p>
+
+      <button class="btn btn--orange eauth__go" :disabled="status.authBusy || status.connecting">{{ status.authBusy ? 'Un momento…' : titles[mode] }}</button>
+
+      <button v-if="mode==='entrar'" type="button" class="eauth__link" @click="mode='olvido'">¿Olvidaste tu contraseña?</button>
+      <button v-if="mode==='olvido'" type="button" class="eauth__link" @click="mode='entrar'">← Volver a entrar</button>
+    </form>`,
+});
+
 /* ===================== MI CUENTA ===================== */
 app.component('page-account', {
   setup() {
@@ -1012,7 +1088,7 @@ app.component('page-account', {
     const faces = computed(() => state.pets.filter(p => p.photo).slice(0, 5));
     const perks = [
       ['📱', 'Tu cuenta en todos tus dispositivos', 'Entra desde el celular o la compu y encuentra tus alertas y mascotas.'],
-      ['🪪', 'Tu nombre y foto en lo que publicas', 'Los vecinos saben quién avisa. Así se genera confianza.'],
+      ['🪪', 'Tu nombre en lo que publicas', 'Los vecinos saben quién avisa. Así se genera confianza.'],
       ['🔒', 'Solo tú editas lo tuyo', 'Marca a tu mascota como reunida o borra tus alertas cuando quieras.'],
     ];
     usePageFx(root, () => intro('.acct > *', { y: 40, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
@@ -1034,20 +1110,25 @@ app.component('page-account', {
         <div class="avatars acct__faces"><span v-for="p in faces" :key="p.id"><pet-media :item="p" /></span></div>
         <span class="eyebrow">Mi cuenta</span>
         <h1 class="h-lg">Únete a la <span class="hl">manada.</span></h1>
-        <p class="lead">Ver el mapa y publicar no requiere cuenta. Si entras con Google, tus publicaciones te acompañan a todas partes.</p>
+        <p class="lead">Ver el mapa y publicar no requiere cuenta. Con una cuenta, tus publicaciones te acompañan a todas partes.</p>
         <ul class="perks">
           <li v-for="p in perks" :key="p[1]"><span class="perks__ico">{{ p[0] }}</span><div><b>{{ p[1] }}</b><p>{{ p[2] }}</p></div></li>
         </ul>
-        <google-btn />
+        <email-auth />
+        <template v-if="auth.google"><span class="eauth__or">o</span><google-btn /></template>
         <a href="#/registrar" class="chip">🐶 o registra a tu mascota sin cuenta →</a>
-        <p class="acct__fine">Usamos tu nombre, foto y correo de Google. Tu correo nunca se muestra a otras personas.
-          <template v-if="myReports.length || myPets.length"><br>Lo que ya publicaste desde este dispositivo ({{ myReports.length + myPets.length }}) pasa a tu cuenta.</template>
+        <p class="acct__fine">Tu correo nunca se muestra a otras personas. Solo se ve el nombre que elijas.
+          <template v-if="myReports.length || myPets.length"><br>Lo que ya publicaste desde este dispositivo ({{ myReports.length + myPets.length }}) pasa a tu cuenta nueva.</template>
         </p>
-        <p v-if="!auth.hosted" class="acct__fine">Google solo puede volver a una página web, por eso el botón abre HUELLAS en tu navegador.</p>
       </section>
 
       <!-- con sesión -->
       <template v-else>
+        <section v-if="status.recovery" class="card acct__join">
+          <span class="eyebrow">Recuperar acceso</span>
+          <h2 class="h-md">Crea tu contraseña nueva</h2>
+          <email-auth />
+        </section>
         <section class="acct__head card">
           <user-avatar :size="88" />
           <div class="acct__who">

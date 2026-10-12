@@ -9,7 +9,7 @@
     ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, { auth: { persistSession: true, flowType: 'pkce', detectSessionInUrl: true } })
     : null;
 
-  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null, user: null, authBusy: false, hasAuthor: false, googleReady: null });
+  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null, user: null, authBusy: false, hasAuthor: false, googleReady: null, emailReady: null, autoconfirm: null, recovery: false });
   const notify = msg => H.onError && H.onError(msg);
   const liked = new Set(state.user.liked || []);
   const followed = new Set(state.user.followed || []);
@@ -101,6 +101,76 @@
     }
   }
 
+  // ---------- correo y contraseña ----------
+  const ES = [
+    [/invalid login credentials/i, 'Correo o contraseña incorrectos.'],
+    [/already (been )?registered|already exists|email_exists/i, 'Ese correo ya tiene cuenta. Entra con tu contraseña.'],
+    [/at least 6|weak_password|password should/i, 'La contraseña debe tener al menos 6 caracteres.'],
+    [/not confirmed/i, 'Confirma tu correo con el enlace que te enviamos y vuelve a intentar.'],
+    [/rate limit|too many|over_email_send/i, 'Demasiados intentos. Espera unos minutos y prueba de nuevo.'],
+    [/invalid.*email|unable to validate email/i, 'Ese correo no parece válido.'],
+    [/signups? not allowed|signup.*disabled/i, 'El registro con correo está desactivado en HUELLAS.'],
+    [/fetch|network/i, 'Sin conexión. Revisa tu internet.'],
+  ];
+  const es = e => { const m = (e && (e.code || '') + ' ' + (e.message || '')) || ''; const hit = ES.find(([rx]) => rx.test(m)); return hit ? hit[1] : (e && e.message) || 'Algo salió mal. Inténtalo de nuevo.'; };
+  const ready = () => { if (!sb || !status.online) throw new Error('Sin conexión. Revisa tu internet.'); };
+
+  // Crear cuenta: si hay sesión anónima, se le agrega correo y contraseña (lo publicado sigue siendo tuyo)
+  async function signUp({ name, email, password }) {
+    ready(); status.authBusy = true;
+    try {
+      const data = { full_name: name.trim() };
+      const { data: { session } } = await sb.auth.getSession();
+      let res;
+      if (session && session.user.is_anonymous) {
+        res = await sb.auth.updateUser({ email: email.trim(), password, data });
+        if (res.error) throw res.error;
+        // con "Confirm email" activado, el correo queda pendiente hasta que se confirme
+        if (res.data.user && res.data.user.is_anonymous) return { pending: true };
+      } else {
+        res = await sb.auth.signUp({ email: email.trim(), password, options: { data, emailRedirectTo: cfg.siteUrl || redirectTo() } });
+        if (res.error) throw res.error;
+        if (!res.data.session) return { pending: true };
+      }
+      const s = (await sb.auth.getSession()).data.session;
+      setSession(s);
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
+  async function signIn({ email, password }) {
+    ready(); status.authBusy = true;
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
+      if (error) throw error;
+      setSession(data.session);
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
+  async function resetPassword(email) {
+    ready(); status.authBusy = true;
+    try {
+      const { error } = await sb.auth.resetPasswordForEmail(email.trim(), { redirectTo: cfg.siteUrl || redirectTo() });
+      if (error) throw error;
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
+  async function setNewPassword(password) {
+    ready(); status.authBusy = true;
+    try {
+      const { error } = await sb.auth.updateUser({ password });
+      if (error) throw error;
+      status.recovery = false;
+      return { ok: true };
+    } catch (e) { throw new Error(es(e)); }
+    finally { status.authBusy = false; }
+  }
+
   async function logout() {
     if (!sb) return;
     status.authBusy = true;
@@ -125,9 +195,17 @@
       setSession(session);
       // ¿Está activado el proveedor Google en Supabase? (Authentication → Sign In / Providers)
       fetch(cfg.supabaseUrl + '/auth/v1/settings', { headers: { apikey: cfg.supabaseKey } })
-        .then(r => r.json()).then(s => { status.googleReady = !!(s.external && s.external.google); })
+        .then(r => r.json()).then(s => {
+          status.googleReady = !!(s.external && s.external.google);
+          status.emailReady = !(s.external && s.external.email === false) && !s.disable_signup;
+          status.autoconfirm = !!s.mailer_autoconfirm; // true = "Confirm email" desactivado
+        })
         .catch(() => { status.googleReady = false; });
-      sb.auth.onAuthStateChange((event, s) => { if (s) setSession(s); if (event === 'SIGNED_IN' && s && !s.user.is_anonymous) notify('👋 ¡Hola, ' + status.user.name + '!'); });
+      sb.auth.onAuthStateChange((event, s) => {
+        if (s) setSession(s);
+        if (event === 'PASSWORD_RECOVERY') { status.recovery = true; location.hash = '#/cuenta'; }
+        if (event === 'SIGNED_IN' && s && !s.user.is_anonymous && status.user) notify('👋 ¡Hola, ' + status.user.name + '!');
+      });
 
       const [reports, pets, comments] = await Promise.all([
         sb.from('reports').select('*').order('created_at', { ascending: false }).limit(500),
@@ -256,7 +334,11 @@
   const actions = Object.fromEntries(Object.keys(local).map(k => [k, (...a) => (status.online ? remote : local)[k](...a)]));
   // ¿Puede esta persona editar la alerta/mascota? En local: siempre. En línea: solo si es suya.
   const canEdit = item => !status.online || !!item.mine;
-  const auth = { login: loginGoogle, logout, enabled: !!(sb && cfg.googleLogin), hosted, siteUrl: cfg.siteUrl || '' };
+  const auth = {
+    signUp, signIn, resetPassword, setNewPassword, logout,
+    login: loginGoogle, google: !!(sb && cfg.googleLogin),
+    enabled: !!sb, hosted, siteUrl: cfg.siteUrl || '',
+  };
 
   Object.assign(H, { actions, status, canEdit, auth });
   if (sb) connect();

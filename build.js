@@ -29,7 +29,9 @@ const makeBody = online => `<div id="app"></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 <script src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-${online ? `<script src="https://unpkg.com/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+${online ? `<script>
+${r('vendor/supabase.min.js')}
+</script>
 <script>
 ${r('js/config.js')}
 </script>` : ''}

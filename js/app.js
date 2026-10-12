@@ -1,6 +1,6 @@
 /* HUELLAS — app (Vue 3 + GSAP/ScrollTrigger + Lenis + Leaflet), sin build step */
 const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, markRaw } = Vue;
-const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE, actions, status, canEdit } = window.HUELLAS;
+const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE, actions, status, canEdit, auth } = window.HUELLAS;
 gsap.registerPlugin(ScrollTrigger);
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -14,7 +14,7 @@ gsap.ticker.lagSmoothing(0);
 /* ---------- router por hash ---------- */
 const ROUTES = [
   ['/', 'page-home'], ['/mapa', 'page-map'], ['/publicar', 'page-publish'],
-  ['/comunidad', 'page-community'], ['/registrar', 'page-register'], ['/mascota/:id', 'page-pet'],
+  ['/comunidad', 'page-community'], ['/registrar', 'page-register'], ['/mascota/:id', 'page-pet'], ['/cuenta', 'page-account'],
 ];
 const parse = (hash = location.hash) => {
   const [path, qs = ''] = (hash.replace(/^#/, '') || '/').split('?');
@@ -242,13 +242,38 @@ const app = createApp({
 
 /* ---------- navegación ---------- */
 const LINKS = [['/', 'Inicio', '🏠'], ['/mapa', 'Mapa', '🗺️'], ['/publicar', 'Publicar', '＋'], ['/comunidad', 'Comunidad', '💬'], ['/registrar', 'Mi mascota', '🐶']];
+const TABS = [...LINKS.slice(0, 4), ['/cuenta', 'Perfil', '👤']];
+const isActive = p => (p === '/' ? route.value.path === '/' : route.value.path.startsWith(p));
+
+// Avatar de la cuenta: foto de Google o inicial
+app.component('user-avatar', {
+  props: { size: { type: Number, default: 34 } },
+  setup: () => ({ status }),
+  template: `
+    <span class="uavatar" :style="{width:size+'px',height:size+'px',fontSize:(size*.42)+'px'}">
+      <img v-if="status.user && status.user.avatar" :src="status.user.avatar" alt="" referrerpolicy="no-referrer">
+      <template v-else-if="status.user">{{ status.user.name.charAt(0).toUpperCase() }}</template>
+      <template v-else>🐾</template>
+    </span>`,
+});
+
+// Botón oficial "Continuar con Google" (colores y logo según la guía de marca de Google)
+app.component('google-btn', {
+  setup: () => ({ auth, status }),
+  template: `
+    <p v-if="auth.hosted && status.googleReady === false" class="acct__fine">El inicio con Google se está configurando. Mientras tanto puedes publicar sin cuenta.</p>
+    <button v-else type="button" class="gbtn" :disabled="status.authBusy || status.connecting" @click="auth.login()">
+      <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      <span>{{ status.authBusy ? 'Abriendo Google…' : (auth.hosted ? 'Continuar con Google' : 'Abrir HUELLAS para entrar con Google') }}</span>
+    </button>`,
+});
+
 app.component('site-nav', {
   setup() {
     const hide = ref(false);
     let last = 0;
     lenis.on('scroll', ({ scroll }) => { hide.value = scroll > last && scroll > 200; last = scroll; });
-    const isActive = p => (p === '/' ? route.value.path === '/' : route.value.path.startsWith(p));
-    return { hide, links: LINKS.filter(l => l[0] !== '/publicar'), isActive };
+    return { hide, links: LINKS.filter(l => l[0] !== '/publicar'), isActive, status, auth };
   },
   template: `
     <header class="nav" :class="{hide}">
@@ -257,16 +282,23 @@ app.component('site-nav', {
         <nav class="nav__links">
           <a v-for="l in links" :key="l[0]" :href="'#'+l[0]" :class="{active:isActive(l[0])}">{{ l[1] }}</a>
         </nav>
-        <a href="#/publicar" class="btn btn--orange btn--sm" v-magnet>🚨 Reportar mascota</a>
+        <div class="nav__end">
+          <a href="#/publicar" class="btn btn--orange btn--sm nav__cta" v-magnet>🚨 Reportar mascota</a>
+          <a v-if="auth.enabled" href="#/cuenta" class="nav__acct" :class="{active:isActive('/cuenta')}" :aria-label="status.user ? 'Mi cuenta' : 'Entrar'">
+            <user-avatar :size="34" />
+            <span class="nav__acct-label">{{ status.user ? status.user.name.split(' ')[0] : 'Entrar' }}</span>
+          </a>
+        </div>
       </div>
     </header>`,
 });
 app.component('tab-bar', {
-  setup: () => ({ links: LINKS, route, isActive: p => (p === '/' ? route.value.path === '/' : route.value.path.startsWith(p)) }),
+  setup: () => ({ links: auth.enabled ? TABS : LINKS, isActive, status }),
   template: `
     <nav class="tabbar">
       <a v-for="l in links" :key="l[0]" :href="'#'+l[0]" :class="{active:isActive(l[0]), plus:l[0]==='/publicar'}">
-        <em>{{ l[2] }}</em><span v-if="l[0]!=='/publicar'">{{ l[1] }}</span>
+        <em v-if="l[0]==='/cuenta'"><user-avatar :size="24" /></em><em v-else>{{ l[2] }}</em>
+        <span v-if="l[0]!=='/publicar'">{{ l[0]==='/cuenta' && status.user ? 'Yo' : l[1] }}</span>
       </a>
     </nav>`,
 });
@@ -870,7 +902,7 @@ app.component('page-community', {
           <article v-for="r in (tab==='reunidos' ? happy : feed)" :key="r.id" class="post" data-reveal>
             <div class="post__head">
               <div class="thumb" :style="{'--c':TYPES[r.type].color+'22'}">{{ TYPES[r.type].icon }}</div>
-              <div style="flex:1"><b>{{ r.name }}</b> <small>{{ TYPES[r.type].verb }} {{ r.zone }}</small><br><small>{{ timeAgo(r.date) }}</small></div>
+              <div style="flex:1;min-width:0"><b>{{ r.name }}</b> <small>{{ TYPES[r.type].verb }} {{ r.zone }}</small><br><small>{{ timeAgo(r.date) }}<template v-if="r.author"> · por <img v-if="r.avatar" :src="r.avatar" class="byline-img" alt="" referrerpolicy="no-referrer">{{ r.author }}</template></small></div>
               <type-tag :type="r.type" />
             </div>
             <div class="post__media" :style="{'--c':TYPES[r.type].color+'1a'}" @click="openAlert(r.id)" style="cursor:pointer"><pet-media :item="r" /></div>
@@ -971,12 +1003,97 @@ app.component('page-pet', {
   </main>`,
 });
 
+/* ===================== MI CUENTA ===================== */
+app.component('page-account', {
+  setup() {
+    const root = ref(null);
+    const myReports = computed(() => state.reports.filter(r => r.mine).sort((a, b) => b.date - a.date));
+    const myPets = computed(() => state.pets.filter(p => p.mine));
+    const faces = computed(() => state.pets.filter(p => p.photo).slice(0, 5));
+    const perks = [
+      ['📱', 'Tu cuenta en todos tus dispositivos', 'Entra desde el celular o la compu y encuentra tus alertas y mascotas.'],
+      ['🪪', 'Tu nombre y foto en lo que publicas', 'Los vecinos saben quién avisa. Así se genera confianza.'],
+      ['🔒', 'Solo tú editas lo tuyo', 'Marca a tu mascota como reunida o borra tus alertas cuando quieras.'],
+    ];
+    usePageFx(root, () => intro('.acct > *', { y: 40, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
+    return { root, status, auth, myReports, myPets, faces, perks, TYPES, timeAgo, openAlert };
+  },
+  template: `
+  <main class="page" ref="root">
+    <div class="wrap acct">
+      <!-- sin conexión (p. ej. vista previa sin base de datos) -->
+      <section v-if="!auth.enabled || (!status.online && !status.connecting)" class="card acct__join">
+        <span class="eyebrow">Mi cuenta</span>
+        <h1 class="h-lg">Entra a la manada.</h1>
+        <p class="lead">El inicio de sesión funciona en la versión en línea de HUELLAS.</p>
+        <a v-if="auth.siteUrl" :href="auth.siteUrl + '#/cuenta'" target="_blank" rel="noopener" class="btn btn--orange mt">Abrir HUELLAS en línea ↗</a>
+      </section>
+
+      <!-- sin iniciar sesión -->
+      <section v-else-if="!status.user" class="acct__join card">
+        <div class="avatars acct__faces"><span v-for="p in faces" :key="p.id"><pet-media :item="p" /></span></div>
+        <span class="eyebrow">Mi cuenta</span>
+        <h1 class="h-lg">Únete a la <span class="hl">manada.</span></h1>
+        <p class="lead">Ver el mapa y publicar no requiere cuenta. Si entras con Google, tus publicaciones te acompañan a todas partes.</p>
+        <ul class="perks">
+          <li v-for="p in perks" :key="p[1]"><span class="perks__ico">{{ p[0] }}</span><div><b>{{ p[1] }}</b><p>{{ p[2] }}</p></div></li>
+        </ul>
+        <google-btn />
+        <a href="#/registrar" class="chip">🐶 o registra a tu mascota sin cuenta →</a>
+        <p class="acct__fine">Usamos tu nombre, foto y correo de Google. Tu correo nunca se muestra a otras personas.
+          <template v-if="myReports.length || myPets.length"><br>Lo que ya publicaste desde este dispositivo ({{ myReports.length + myPets.length }}) pasa a tu cuenta.</template>
+        </p>
+        <p v-if="!auth.hosted" class="acct__fine">Google solo puede volver a una página web, por eso el botón abre HUELLAS en tu navegador.</p>
+      </section>
+
+      <!-- con sesión -->
+      <template v-else>
+        <section class="acct__head card">
+          <user-avatar :size="88" />
+          <div class="acct__who">
+            <span class="eyebrow">Mi cuenta</span>
+            <h1 class="h-md">{{ status.user.name }}</h1>
+            <p class="muted">{{ status.user.email }}</p>
+          </div>
+          <div class="acct__stats">
+            <div><b>{{ myPets.length }}</b><span>mascotas</span></div>
+            <div><b>{{ myReports.length }}</b><span>alertas</span></div>
+            <div><b>{{ myReports.filter(r=>r.type==='reunido').length }}</b><span>reencuentros</span></div>
+          </div>
+          <button class="btn btn--ghost btn--sm" :disabled="status.authBusy" @click="auth.logout()">Cerrar sesión</button>
+        </section>
+
+        <section>
+          <div class="section__head" style="margin-bottom:18px"><h2 class="h-md">Mis mascotas</h2><a href="#/registrar" class="btn btn--sm">＋ Registrar mascota</a></div>
+          <div class="pets-grid" v-if="myPets.length"><pet-card v-for="p in myPets" :key="p.id" :pet="p" /></div>
+          <p v-else class="card empty">Todavía no registraste a tu mascota. Su perfil queda listo por si algún día se pierde.</p>
+        </section>
+
+        <section>
+          <div class="section__head" style="margin-bottom:18px"><h2 class="h-md">Mis alertas</h2><a href="#/publicar" class="btn btn--orange btn--sm">🚨 Nueva alerta</a></div>
+          <div class="acct__alerts" v-if="myReports.length">
+            <button v-for="r in myReports" :key="r.id" class="alert-item" @click="openAlert(r.id)">
+              <div class="thumb" :style="{'--c':TYPES[r.type].color+'22'}"><pet-media :item="r" /></div>
+              <div style="min-width:0;flex:1">
+                <h4>{{ r.name }}</h4>
+                <p>{{ r.zone }} · {{ timeAgo(r.date) }} · {{ r.comments.length }} comentarios</p>
+                <div style="margin-top:6px"><type-tag :type="r.type" /></div>
+              </div>
+            </button>
+          </div>
+          <p v-else class="card empty">No publicaste alertas. Si ves una mascota perdida, márcala en el mapa.</p>
+        </section>
+      </template>
+    </div>
+  </main>`,
+});
+
 /* ===================== REGISTRAR MASCOTA ===================== */
 app.component('page-register', {
   setup() {
     const root = ref(null), fileIn = ref(null);
     const accents = ['#FF6B35', '#7B61FF', '#1DBF73', '#FFB020', '#FF4D4D'];
-    const form = reactive({ name: '', species: 'perro', breed: '', age: '', zone: 'Centro', owner: state.user.name || '', bio: '', traits: '', photo: null, accent: accents[0] });
+    const form = reactive({ name: '', species: 'perro', breed: '', age: '', zone: 'Centro', owner: (status.user && status.user.name) || state.user.name || '', bio: '', traits: '', photo: null, accent: accents[0] });
     const onFile = async e => { const f = e.target.files[0]; if (f) form.photo = await readImage(f, 800); };
     const sending = ref(false);
     const submit = async () => {
@@ -1105,7 +1222,7 @@ app.component('alert-modal', {
           <div v-if="r.type!=='reunido'">
             <p style="font-weight:700;margin:6px 0">👀 ¿La viste? Cuéntanos</p>
             <div class="flex" style="flex-wrap:nowrap"><input class="input" v-model="comment" placeholder="Ej. La vi en el 3er anillo hace 10 min" @keyup.enter="send"><button class="btn btn--sm" @click="send">Enviar</button></div>
-            <div v-for="(c,i) in r.comments" :key="i" style="margin-top:8px;font-size:.88rem;padding:10px 12px;border-radius:14px;background:var(--cream)">{{ c.text }} <small class="muted">· {{ timeAgo(c.date) }}</small></div>
+            <div v-for="(c,i) in r.comments" :key="i" style="margin-top:8px;font-size:.88rem;padding:10px 12px;border-radius:14px;background:var(--cream)"><b v-if="c.author" style="display:block;font-size:.8rem">{{ c.author }}</b>{{ c.text }} <small class="muted">· {{ timeAgo(c.date) }}</small></div>
           </div>
         </div>
       </div>

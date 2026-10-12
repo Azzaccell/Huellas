@@ -55,6 +55,14 @@ create table if not exists public.comments (
 );
 create index if not exists comments_report_idx on public.comments (report_id);
 
+-- autor visible (nombre y foto de Google) en lo que cada quien publica
+alter table public.reports add column if not exists author text check (char_length(author) <= 80);
+alter table public.reports add column if not exists avatar text check (char_length(avatar) <= 500);
+alter table public.pets    add column if not exists author text check (char_length(author) <= 80);
+alter table public.pets    add column if not exists avatar text check (char_length(avatar) <= 500);
+alter table public.comments add column if not exists author text check (char_length(author) <= 80);
+alter table public.comments add column if not exists avatar text check (char_length(avatar) <= 500);
+
 -- ---------- seguridad (Row Level Security) ----------
 -- Todos pueden leer. Para escribir hace falta una sesión (anónima o con cuenta):
 -- cada fila guarda el user_id de quien la creó y solo esa persona puede editarla o borrarla.

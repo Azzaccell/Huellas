@@ -286,6 +286,56 @@ footer.foot{padding:70px 0 120px;color:var(--ink-2)}
 .pop h4{font-family:var(--f-display);font-size:1.15rem;margin-bottom:2px}
 .pop p{margin:0!important;color:var(--muted);font-size:.82rem}
 .pop button{margin-top:10px;padding:8px 14px;border-radius:999px;background:var(--night);color:#fff;font-weight:700;font-size:.82rem}
+/* ---------- cuenta / Google ---------- */
+.nav__end{display:flex;align-items:center;gap:10px}
+.nav__acct{display:flex;align-items:center;gap:8px;padding:4px 14px 4px 4px;border-radius:999px;font-weight:700;font-size:.92rem;transition:.25s;box-shadow:inset 0 0 0 1.5px var(--line)}
+.nav__acct:hover,.nav__acct.active{background:var(--line)}
+.uavatar{display:inline-grid;place-items:center;border-radius:50%;overflow:hidden;flex-shrink:0;background:conic-gradient(var(--orange),var(--yellow),var(--violet),var(--orange));color:#fff;font-family:var(--f-display);font-weight:800;line-height:1}
+.uavatar img{width:100%;height:100%;object-fit:cover}
+.tabbar .uavatar{box-shadow:0 0 0 2px rgba(255,255,255,.5)}
+.gbtn{--g-bg:#FFFFFF;--g-line:#747775;--g-fg:#1F1F1F;display:inline-flex;align-items:center;justify-content:center;gap:12px;width:100%;max-width:400px;padding:14px 20px;border-radius:999px;background:var(--g-bg);color:var(--g-fg);box-shadow:inset 0 0 0 1px var(--g-line);font-weight:600;font-size:1rem;transition:transform .3s cubic-bezier(.3,1.6,.5,1),box-shadow .3s}
+.gbtn:hover{transform:translateY(-2px);box-shadow:inset 0 0 0 1px var(--g-line),0 12px 26px -14px rgba(0,0,0,.45)}
+.gbtn:disabled{opacity:.6;transform:none;cursor:progress}
+.gbtn:focus-visible,.nav__acct:focus-visible,.btn:focus-visible,.chip:focus-visible{outline:3px solid var(--orange);outline-offset:3px}
+.acct{display:flex;flex-direction:column;gap:clamp(28px,5vw,48px);max-width:960px}
+.acct__join{max-width:620px;margin-inline:auto;text-align:center;display:flex;flex-direction:column;align-items:center;gap:16px;padding-block:clamp(30px,5vw,54px)}
+.acct__join h1{margin:0}
+.acct__join .lead{margin:0 auto}
+.acct__faces{justify-content:center;margin-bottom:4px}
+.acct__faces span{width:56px;height:56px;margin-left:-14px;border-width:4px}
+.perks{list-style:none;display:grid;gap:12px;width:100%;text-align:left;margin:6px 0}
+.perks li{display:flex;gap:14px;align-items:flex-start;padding:14px 16px;border-radius:20px;background:var(--cream)}
+.perks__ico{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-size:1.3rem;background:var(--surface);flex-shrink:0}
+.perks p{font-size:.88rem;color:var(--ink-2)}
+.acct__fine{font-size:.8rem;color:var(--muted);max-width:44ch}
+.acct__head{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.acct__who{flex:1;min-width:200px}
+.acct__who h1{margin:6px 0 2px}
+.acct__stats{display:flex;gap:26px}
+.acct__stats b{font-family:var(--f-display);font-size:1.8rem;display:block;line-height:1}
+.acct__stats span{font-size:.8rem;color:var(--muted)}
+.acct__alerts{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px}
+.byline-img{width:16px;height:16px;border-radius:50%;vertical-align:-3px;margin-right:4px;display:inline-block}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .gbtn{--g-bg:#131314;--g-line:#8E918F;--g-fg:#E3E3E3}}
+:root[data-theme="dark"] .gbtn{--g-bg:#131314;--g-line:#8E918F;--g-fg:#E3E3E3}
+.nav__links a{white-space:nowrap}
+@media (max-width:1100px){
+  .nav__acct{padding:3px}
+  .nav__acct-label{display:none}
+  .nav__links a{padding:10px 12px}
+}
+@media (max-width:900px){
+  .nav__cta{padding:10px 14px}
+  .nav__links a{padding:9px 9px;font-size:.88rem}
+}
+@media (max-width:720px){
+  .nav__acct{padding:3px}
+  .nav__acct-label{display:none}
+  .nav__in{padding:8px 8px 8px 18px}
+  .acct__head{flex-direction:column;text-align:center}
+  .acct__stats{justify-content:center}
+}
+
 .live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mint);margin-right:6px;animation:ring 1.6s ease-in-out infinite;vertical-align:middle}
 .tiles{filter:saturate(.75) sepia(.12) brightness(1.03)}
 .tiles-dark{filter:invert(1) hue-rotate(200deg) saturate(.4) brightness(.85) contrast(.9)}
@@ -465,6 +515,11 @@ textarea.input{resize:vertical;min-height:110px}
    Los valores salen de Supabase → Project Settings → API. La "anon / publishable key" es pública por diseño:
    la seguridad la ponen las reglas (RLS) de supabase/schema.sql. Nunca pongas aquí la "service_role key". */
 window.HUELLAS_CONFIG = {
+  // Dirección pública de la web. Google solo puede volver a una dirección web, así que el HTML
+  // abierto como archivo (por ejemplo desde WhatsApp) abre esta página para iniciar sesión.
+  siteUrl: 'https://azzaccell.github.io/Huellas/',
+  // Botón "Continuar con Google" (requiere activar el proveedor Google en Supabase).
+  googleLogin: true,
   supabaseUrl: 'https://qxpyyxoontyrikgdokip.supabase.co',
   supabaseKey: 'sb_publishable_DRUdKM_Rl-Vtjh8g8Vw4_A_W5dSQd5Z',
 };
@@ -593,33 +648,42 @@ window.HUELLAS = (() => {
 </script>
 <script>
 /* HUELLAS — acciones de datos. Modo local (localStorage) o en línea (Supabase + tiempo real).
-   Toda la app escribe a través de HUELLAS.actions; así el mismo código sirve en ambos modos. */
+   Toda la app escribe a través de HUELLAS.actions; así el mismo código sirve en ambos modos.
+   Sesión: anónima por defecto; "Continuar con Google" convierte esa sesión en una cuenta
+   (linkIdentity), así lo publicado antes sigue siendo tuyo. */
 (() => {
   const H = window.HUELLAS, { state } = H;
   const cfg = window.HUELLAS_CONFIG || {};
   const sb = cfg.supabaseUrl && cfg.supabaseKey && window.supabase
-    ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, { auth: { persistSession: true } })
+    ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, { auth: { persistSession: true, flowType: 'pkce', detectSessionInUrl: true } })
     : null;
 
-  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null });
+  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null, user: null, authBusy: false, hasAuthor: false, googleReady: null });
   const notify = msg => H.onError && H.onError(msg);
   const liked = new Set(state.user.liked || []);
   const followed = new Set(state.user.followed || []);
   const remember = () => { state.user.liked = [...liked]; state.user.followed = [...followed]; };
+  // La web abierta como archivo (file://, content:// de WhatsApp) no puede recibir la vuelta de Google
+  const hosted = /^https?:$/.test(location.protocol);
+  const redirectTo = () => location.origin + location.pathname;
 
   // ---------- conversión fila de la base ↔ objeto de la app ----------
   const toReport = row => H.lite([{
     id: row.id, type: row.type, species: row.species, name: row.name, breed: row.breed || '', color: row.color || '',
     zone: row.zone || '', lat: row.lat, lng: row.lng, desc: row.description || '', reward: row.reward || '',
     contact: row.contact || '', photo: row.photo, video: row.video, petId: row.pet_id, likes: row.likes,
-    date: Date.parse(row.created_at), comments: [], liked: liked.has(row.id), mine: !!status.uid && row.user_id === status.uid,
+    date: Date.parse(row.created_at), comments: [], liked: liked.has(row.id),
+    ownerId: row.user_id, mine: !!status.uid && row.user_id === status.uid, author: row.author || '', avatar: row.avatar || '',
   }])[0];
   const toPet = row => H.lite([{
     id: row.id, name: row.name, species: row.species, breed: row.breed || '', age: row.age || '', owner: row.owner || '',
     zone: row.zone || '', bio: row.bio || '', traits: row.traits || [], photo: row.photo, video: row.video,
-    accent: row.accent || '#FF6B35', followers: row.followers, lost: row.lost, mine: !!status.uid && row.user_id === status.uid,
+    accent: row.accent || '#FF6B35', followers: row.followers, lost: row.lost,
+    ownerId: row.user_id, mine: !!status.uid && row.user_id === status.uid, author: row.author || '', avatar: row.avatar || '',
   }])[0];
-  const toComment = row => ({ id: row.id, text: row.text, date: Date.parse(row.created_at) });
+  const toComment = row => ({ id: row.id, text: row.text, date: Date.parse(row.created_at), author: row.author || '', avatar: row.avatar || '' });
+  // Nombre y foto de Google para guardar junto a lo publicado (solo si la base ya tiene esas columnas)
+  const byline = () => (status.hasAuthor && status.user ? { author: status.user.name, avatar: status.user.avatar || null } : {});
 
   const digits = c => { const d = String(c || '').replace(/\D/g, ''); return d.startsWith('591') ? d : '591' + d; };
 
@@ -633,16 +697,86 @@ window.HUELLAS = (() => {
     return sb.storage.from('fotos').getPublicUrl(path).data.publicUrl;
   }
 
+  // ---------- sesión ----------
+  function setSession(session) {
+    const u = session && session.user;
+    status.uid = u ? u.id : null;
+    if (u && !u.is_anonymous) {
+      const m = u.user_metadata || {};
+      status.user = { name: m.full_name || m.name || (u.email || '').split('@')[0], email: u.email || '', avatar: m.avatar_url || m.picture || '' };
+      if (!state.user.name) state.user.name = status.user.name;
+    } else status.user = null;
+    // recalcula qué publicaciones son de esta persona
+    state.reports.forEach(r => { if (r.ownerId !== undefined) r.mine = !!status.uid && r.ownerId === status.uid; });
+    state.pets.forEach(p => { if (p.ownerId !== undefined) p.mine = !!status.uid && p.ownerId === status.uid; });
+  }
+
+  // Vuelta de Google: limpia ?code= / ?error= de la dirección y avisa si algo falló
+  function handleReturn() {
+    const q = new URLSearchParams(location.search);
+    const hq = new URLSearchParams((location.hash.split('?')[1]) || '');
+    const code = q.get('error_code') || hq.get('error_code');
+    const desc = q.get('error_description') || hq.get('error_description');
+    if (q.has('code') || code || q.has('error')) {
+      try {
+        history.replaceState(null, '', location.pathname + (location.hash.startsWith('#/') ? location.hash.split('?')[0] : '#/cuenta'));
+        dispatchEvent(new HashChangeEvent('hashchange')); // el router muestra "Mi cuenta"
+      } catch (e) {}
+    }
+    if (code === 'identity_already_exists') {
+      // esa cuenta de Google ya existe: entra directamente con ella
+      sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: redirectTo() } });
+      return true;
+    }
+    if (code || desc) notify('No se pudo iniciar sesión: ' + (desc || code).replace(/\+/g, ' '));
+    return false;
+  }
+
+  async function loginGoogle() {
+    if (!sb || !status.online) return notify('El inicio de sesión necesita conexión a internet');
+    if (!hosted) { location.href = (cfg.siteUrl || '') + '#/cuenta'; return; }
+    if (status.googleReady === false) return notify('El inicio con Google todavía no está activado en HUELLAS');
+    status.authBusy = true;
+    const { data: { session } } = await sb.auth.getSession();
+    const opts = { provider: 'google', options: { redirectTo: redirectTo() } };
+    // con una sesión anónima se vincula Google a ella para conservar lo publicado
+    const res = session && session.user.is_anonymous && sb.auth.linkIdentity
+      ? await sb.auth.linkIdentity(opts)
+      : await sb.auth.signInWithOAuth(opts);
+    if (res.error) {
+      // p. ej. vinculación manual desactivada: entrar normalmente con Google
+      const again = await sb.auth.signInWithOAuth(opts);
+      if (again.error) { status.authBusy = false; notify('No se pudo abrir Google: ' + again.error.message); }
+    }
+  }
+
+  async function logout() {
+    if (!sb) return;
+    status.authBusy = true;
+    await sb.auth.signOut();
+    const res = await sb.auth.signInAnonymously();
+    setSession(res.data && res.data.session);
+    status.authBusy = false;
+    notify('Cerraste sesión');
+  }
+
   // ---------- carga inicial + tiempo real ----------
   async function connect() {
     try {
+      // getSession espera a que supabase-js canjee el ?code= de Google; recién después se limpia la dirección
       let { data: { session } } = await sb.auth.getSession();
+      if (handleReturn()) return;
       if (!session) {
         const res = await sb.auth.signInAnonymously();
         if (res.error) throw res.error;
         session = res.data.session;
       }
-      status.uid = session.user.id;
+      setSession(session);
+      // ¿Está activado el proveedor Google en Supabase? (Authentication → Sign In / Providers)
+      fetch(cfg.supabaseUrl + '/auth/v1/settings', { headers: { apikey: cfg.supabaseKey } })
+        .then(r => r.json()).then(s => { status.googleReady = !!(s.external && s.external.google); })
+        .catch(() => { status.googleReady = false; });
+      sb.auth.onAuthStateChange((event, s) => { if (s) setSession(s); if (event === 'SIGNED_IN' && s && !s.user.is_anonymous) notify('👋 ¡Hola, ' + status.user.name + '!'); });
 
       const [reports, pets, comments] = await Promise.all([
         sb.from('reports').select('*').order('created_at', { ascending: false }).limit(500),
@@ -651,6 +785,7 @@ window.HUELLAS = (() => {
       ]);
       const err = reports.error || pets.error || comments.error;
       if (err) throw err;
+      status.hasAuthor = !!(reports.data[0] && 'author' in reports.data[0]);
 
       const list = reports.data.map(toReport);
       const byId = Object.fromEntries(list.map(r => [r.id, r]));
@@ -664,6 +799,7 @@ window.HUELLAS = (() => {
       notify('Sin conexión con la comunidad: mostrando datos guardados en este equipo');
     } finally {
       status.connecting = false;
+      status.authBusy = false;
     }
   }
 
@@ -703,7 +839,7 @@ window.HUELLAS = (() => {
     },
     async toggleLike(r) { r.liked = !r.liked; r.likes += r.liked ? 1 : -1; r.liked ? liked.add(r.id) : liked.delete(r.id); remember(); },
     async toggleFollow(p) { const on = !followed.has(p.id); on ? followed.add(p.id) : followed.delete(p.id); p.followers += on ? 1 : -1; remember(); return on; },
-    async addComment(r, text) { r.comments.push({ id: Date.now(), text, date: Date.now() }); },
+    async addComment(r, text) { r.comments.push({ id: Date.now(), text, date: Date.now(), author: state.user.name || '' }); },
     async setReportType(r, type) { r.type = type; },
     async setPetLost(p, lost) { p.lost = lost; },
     async removeReport(id) { const i = state.reports.findIndex(x => x.id === id); if (i > -1) state.reports.splice(i, 1); },
@@ -715,7 +851,7 @@ window.HUELLAS = (() => {
       const { data, error } = await sb.from('reports').insert({
         type: form.type, species: form.species, name: form.name.trim(), breed: form.breed, color: form.color, zone: form.zone,
         lat: form.lat, lng: form.lng, description: form.desc, reward: form.type === 'perdido' ? form.reward : null,
-        contact: digits(form.contact), photo, video: form.video || null, pet_id: form.petId || null,
+        contact: digits(form.contact), photo, video: form.video || null, pet_id: form.petId || null, ...byline(),
       }).select().single();
       if (error) throw error;
       if (!state.reports.some(r => r.id === data.id)) state.reports.unshift(toReport(data));
@@ -726,7 +862,7 @@ window.HUELLAS = (() => {
       const photo = await uploadPhoto(form.photo);
       const { data, error } = await sb.from('pets').insert({
         name: form.name.trim(), species: form.species, breed: form.breed, age: form.age, owner: form.owner, zone: form.zone,
-        bio: form.bio, traits: form.traits, photo, accent: form.accent,
+        bio: form.bio, traits: form.traits, photo, accent: form.accent, ...byline(),
       }).select().single();
       if (error) throw error;
       if (!state.pets.some(p => p.id === data.id)) state.pets.unshift(toPet(data));
@@ -744,7 +880,7 @@ window.HUELLAS = (() => {
       return on;
     },
     async addComment(r, text) {
-      const { data, error } = await sb.from('comments').insert({ report_id: r.id, text }).select().single();
+      const { data, error } = await sb.from('comments').insert({ report_id: r.id, text, ...byline() }).select().single();
       if (error) throw error;
       if (!r.comments.some(c => c.id === data.id)) r.comments.push(toComment(data));
     },
@@ -769,8 +905,9 @@ window.HUELLAS = (() => {
   const actions = Object.fromEntries(Object.keys(local).map(k => [k, (...a) => (status.online ? remote : local)[k](...a)]));
   // ¿Puede esta persona editar la alerta/mascota? En local: siempre. En línea: solo si es suya.
   const canEdit = item => !status.online || !!item.mine;
+  const auth = { login: loginGoogle, logout, enabled: !!(sb && cfg.googleLogin), hosted, siteUrl: cfg.siteUrl || '' };
 
-  Object.assign(H, { actions, status, canEdit });
+  Object.assign(H, { actions, status, canEdit, auth });
   if (sb) connect();
 })();
 
@@ -778,7 +915,7 @@ window.HUELLAS = (() => {
 <script>
 /* HUELLAS — app (Vue 3 + GSAP/ScrollTrigger + Lenis + Leaflet), sin build step */
 const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, markRaw } = Vue;
-const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE, actions, status, canEdit } = window.HUELLAS;
+const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE, actions, status, canEdit, auth } = window.HUELLAS;
 gsap.registerPlugin(ScrollTrigger);
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -792,7 +929,7 @@ gsap.ticker.lagSmoothing(0);
 /* ---------- router por hash ---------- */
 const ROUTES = [
   ['/', 'page-home'], ['/mapa', 'page-map'], ['/publicar', 'page-publish'],
-  ['/comunidad', 'page-community'], ['/registrar', 'page-register'], ['/mascota/:id', 'page-pet'],
+  ['/comunidad', 'page-community'], ['/registrar', 'page-register'], ['/mascota/:id', 'page-pet'], ['/cuenta', 'page-account'],
 ];
 const parse = (hash = location.hash) => {
   const [path, qs = ''] = (hash.replace(/^#/, '') || '/').split('?');
@@ -1020,13 +1157,38 @@ const app = createApp({
 
 /* ---------- navegación ---------- */
 const LINKS = [['/', 'Inicio', '🏠'], ['/mapa', 'Mapa', '🗺️'], ['/publicar', 'Publicar', '＋'], ['/comunidad', 'Comunidad', '💬'], ['/registrar', 'Mi mascota', '🐶']];
+const TABS = [...LINKS.slice(0, 4), ['/cuenta', 'Perfil', '👤']];
+const isActive = p => (p === '/' ? route.value.path === '/' : route.value.path.startsWith(p));
+
+// Avatar de la cuenta: foto de Google o inicial
+app.component('user-avatar', {
+  props: { size: { type: Number, default: 34 } },
+  setup: () => ({ status }),
+  template: `
+    <span class="uavatar" :style="{width:size+'px',height:size+'px',fontSize:(size*.42)+'px'}">
+      <img v-if="status.user && status.user.avatar" :src="status.user.avatar" alt="" referrerpolicy="no-referrer">
+      <template v-else-if="status.user">{{ status.user.name.charAt(0).toUpperCase() }}</template>
+      <template v-else>🐾</template>
+    </span>`,
+});
+
+// Botón oficial "Continuar con Google" (colores y logo según la guía de marca de Google)
+app.component('google-btn', {
+  setup: () => ({ auth, status }),
+  template: `
+    <p v-if="auth.hosted && status.googleReady === false" class="acct__fine">El inicio con Google se está configurando. Mientras tanto puedes publicar sin cuenta.</p>
+    <button v-else type="button" class="gbtn" :disabled="status.authBusy || status.connecting" @click="auth.login()">
+      <svg viewBox="0 0 48 48" width="20" height="20" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      <span>{{ status.authBusy ? 'Abriendo Google…' : (auth.hosted ? 'Continuar con Google' : 'Abrir HUELLAS para entrar con Google') }}</span>
+    </button>`,
+});
+
 app.component('site-nav', {
   setup() {
     const hide = ref(false);
     let last = 0;
     lenis.on('scroll', ({ scroll }) => { hide.value = scroll > last && scroll > 200; last = scroll; });
-    const isActive = p => (p === '/' ? route.value.path === '/' : route.value.path.startsWith(p));
-    return { hide, links: LINKS.filter(l => l[0] !== '/publicar'), isActive };
+    return { hide, links: LINKS.filter(l => l[0] !== '/publicar'), isActive, status, auth };
   },
   template: `
     <header class="nav" :class="{hide}">
@@ -1035,16 +1197,23 @@ app.component('site-nav', {
         <nav class="nav__links">
           <a v-for="l in links" :key="l[0]" :href="'#'+l[0]" :class="{active:isActive(l[0])}">{{ l[1] }}</a>
         </nav>
-        <a href="#/publicar" class="btn btn--orange btn--sm" v-magnet>🚨 Reportar mascota</a>
+        <div class="nav__end">
+          <a href="#/publicar" class="btn btn--orange btn--sm nav__cta" v-magnet>🚨 Reportar mascota</a>
+          <a v-if="auth.enabled" href="#/cuenta" class="nav__acct" :class="{active:isActive('/cuenta')}" :aria-label="status.user ? 'Mi cuenta' : 'Entrar'">
+            <user-avatar :size="34" />
+            <span class="nav__acct-label">{{ status.user ? status.user.name.split(' ')[0] : 'Entrar' }}</span>
+          </a>
+        </div>
       </div>
     </header>`,
 });
 app.component('tab-bar', {
-  setup: () => ({ links: LINKS, route, isActive: p => (p === '/' ? route.value.path === '/' : route.value.path.startsWith(p)) }),
+  setup: () => ({ links: auth.enabled ? TABS : LINKS, isActive, status }),
   template: `
     <nav class="tabbar">
       <a v-for="l in links" :key="l[0]" :href="'#'+l[0]" :class="{active:isActive(l[0]), plus:l[0]==='/publicar'}">
-        <em>{{ l[2] }}</em><span v-if="l[0]!=='/publicar'">{{ l[1] }}</span>
+        <em v-if="l[0]==='/cuenta'"><user-avatar :size="24" /></em><em v-else>{{ l[2] }}</em>
+        <span v-if="l[0]!=='/publicar'">{{ l[0]==='/cuenta' && status.user ? 'Yo' : l[1] }}</span>
       </a>
     </nav>`,
 });
@@ -1648,7 +1817,7 @@ app.component('page-community', {
           <article v-for="r in (tab==='reunidos' ? happy : feed)" :key="r.id" class="post" data-reveal>
             <div class="post__head">
               <div class="thumb" :style="{'--c':TYPES[r.type].color+'22'}">{{ TYPES[r.type].icon }}</div>
-              <div style="flex:1"><b>{{ r.name }}</b> <small>{{ TYPES[r.type].verb }} {{ r.zone }}</small><br><small>{{ timeAgo(r.date) }}</small></div>
+              <div style="flex:1;min-width:0"><b>{{ r.name }}</b> <small>{{ TYPES[r.type].verb }} {{ r.zone }}</small><br><small>{{ timeAgo(r.date) }}<template v-if="r.author"> · por <img v-if="r.avatar" :src="r.avatar" class="byline-img" alt="" referrerpolicy="no-referrer">{{ r.author }}</template></small></div>
               <type-tag :type="r.type" />
             </div>
             <div class="post__media" :style="{'--c':TYPES[r.type].color+'1a'}" @click="openAlert(r.id)" style="cursor:pointer"><pet-media :item="r" /></div>
@@ -1749,12 +1918,97 @@ app.component('page-pet', {
   </main>`,
 });
 
+/* ===================== MI CUENTA ===================== */
+app.component('page-account', {
+  setup() {
+    const root = ref(null);
+    const myReports = computed(() => state.reports.filter(r => r.mine).sort((a, b) => b.date - a.date));
+    const myPets = computed(() => state.pets.filter(p => p.mine));
+    const faces = computed(() => state.pets.filter(p => p.photo).slice(0, 5));
+    const perks = [
+      ['📱', 'Tu cuenta en todos tus dispositivos', 'Entra desde el celular o la compu y encuentra tus alertas y mascotas.'],
+      ['🪪', 'Tu nombre y foto en lo que publicas', 'Los vecinos saben quién avisa. Así se genera confianza.'],
+      ['🔒', 'Solo tú editas lo tuyo', 'Marca a tu mascota como reunida o borra tus alertas cuando quieras.'],
+    ];
+    usePageFx(root, () => intro('.acct > *', { y: 40, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
+    return { root, status, auth, myReports, myPets, faces, perks, TYPES, timeAgo, openAlert };
+  },
+  template: `
+  <main class="page" ref="root">
+    <div class="wrap acct">
+      <!-- sin conexión (p. ej. vista previa sin base de datos) -->
+      <section v-if="!auth.enabled || (!status.online && !status.connecting)" class="card acct__join">
+        <span class="eyebrow">Mi cuenta</span>
+        <h1 class="h-lg">Entra a la manada.</h1>
+        <p class="lead">El inicio de sesión funciona en la versión en línea de HUELLAS.</p>
+        <a v-if="auth.siteUrl" :href="auth.siteUrl + '#/cuenta'" target="_blank" rel="noopener" class="btn btn--orange mt">Abrir HUELLAS en línea ↗</a>
+      </section>
+
+      <!-- sin iniciar sesión -->
+      <section v-else-if="!status.user" class="acct__join card">
+        <div class="avatars acct__faces"><span v-for="p in faces" :key="p.id"><pet-media :item="p" /></span></div>
+        <span class="eyebrow">Mi cuenta</span>
+        <h1 class="h-lg">Únete a la <span class="hl">manada.</span></h1>
+        <p class="lead">Ver el mapa y publicar no requiere cuenta. Si entras con Google, tus publicaciones te acompañan a todas partes.</p>
+        <ul class="perks">
+          <li v-for="p in perks" :key="p[1]"><span class="perks__ico">{{ p[0] }}</span><div><b>{{ p[1] }}</b><p>{{ p[2] }}</p></div></li>
+        </ul>
+        <google-btn />
+        <a href="#/registrar" class="chip">🐶 o registra a tu mascota sin cuenta →</a>
+        <p class="acct__fine">Usamos tu nombre, foto y correo de Google. Tu correo nunca se muestra a otras personas.
+          <template v-if="myReports.length || myPets.length"><br>Lo que ya publicaste desde este dispositivo ({{ myReports.length + myPets.length }}) pasa a tu cuenta.</template>
+        </p>
+        <p v-if="!auth.hosted" class="acct__fine">Google solo puede volver a una página web, por eso el botón abre HUELLAS en tu navegador.</p>
+      </section>
+
+      <!-- con sesión -->
+      <template v-else>
+        <section class="acct__head card">
+          <user-avatar :size="88" />
+          <div class="acct__who">
+            <span class="eyebrow">Mi cuenta</span>
+            <h1 class="h-md">{{ status.user.name }}</h1>
+            <p class="muted">{{ status.user.email }}</p>
+          </div>
+          <div class="acct__stats">
+            <div><b>{{ myPets.length }}</b><span>mascotas</span></div>
+            <div><b>{{ myReports.length }}</b><span>alertas</span></div>
+            <div><b>{{ myReports.filter(r=>r.type==='reunido').length }}</b><span>reencuentros</span></div>
+          </div>
+          <button class="btn btn--ghost btn--sm" :disabled="status.authBusy" @click="auth.logout()">Cerrar sesión</button>
+        </section>
+
+        <section>
+          <div class="section__head" style="margin-bottom:18px"><h2 class="h-md">Mis mascotas</h2><a href="#/registrar" class="btn btn--sm">＋ Registrar mascota</a></div>
+          <div class="pets-grid" v-if="myPets.length"><pet-card v-for="p in myPets" :key="p.id" :pet="p" /></div>
+          <p v-else class="card empty">Todavía no registraste a tu mascota. Su perfil queda listo por si algún día se pierde.</p>
+        </section>
+
+        <section>
+          <div class="section__head" style="margin-bottom:18px"><h2 class="h-md">Mis alertas</h2><a href="#/publicar" class="btn btn--orange btn--sm">🚨 Nueva alerta</a></div>
+          <div class="acct__alerts" v-if="myReports.length">
+            <button v-for="r in myReports" :key="r.id" class="alert-item" @click="openAlert(r.id)">
+              <div class="thumb" :style="{'--c':TYPES[r.type].color+'22'}"><pet-media :item="r" /></div>
+              <div style="min-width:0;flex:1">
+                <h4>{{ r.name }}</h4>
+                <p>{{ r.zone }} · {{ timeAgo(r.date) }} · {{ r.comments.length }} comentarios</p>
+                <div style="margin-top:6px"><type-tag :type="r.type" /></div>
+              </div>
+            </button>
+          </div>
+          <p v-else class="card empty">No publicaste alertas. Si ves una mascota perdida, márcala en el mapa.</p>
+        </section>
+      </template>
+    </div>
+  </main>`,
+});
+
 /* ===================== REGISTRAR MASCOTA ===================== */
 app.component('page-register', {
   setup() {
     const root = ref(null), fileIn = ref(null);
     const accents = ['#FF6B35', '#7B61FF', '#1DBF73', '#FFB020', '#FF4D4D'];
-    const form = reactive({ name: '', species: 'perro', breed: '', age: '', zone: 'Centro', owner: state.user.name || '', bio: '', traits: '', photo: null, accent: accents[0] });
+    const form = reactive({ name: '', species: 'perro', breed: '', age: '', zone: 'Centro', owner: (status.user && status.user.name) || state.user.name || '', bio: '', traits: '', photo: null, accent: accents[0] });
     const onFile = async e => { const f = e.target.files[0]; if (f) form.photo = await readImage(f, 800); };
     const sending = ref(false);
     const submit = async () => {
@@ -1883,7 +2137,7 @@ app.component('alert-modal', {
           <div v-if="r.type!=='reunido'">
             <p style="font-weight:700;margin:6px 0">👀 ¿La viste? Cuéntanos</p>
             <div class="flex" style="flex-wrap:nowrap"><input class="input" v-model="comment" placeholder="Ej. La vi en el 3er anillo hace 10 min" @keyup.enter="send"><button class="btn btn--sm" @click="send">Enviar</button></div>
-            <div v-for="(c,i) in r.comments" :key="i" style="margin-top:8px;font-size:.88rem;padding:10px 12px;border-radius:14px;background:var(--cream)">{{ c.text }} <small class="muted">· {{ timeAgo(c.date) }}</small></div>
+            <div v-for="(c,i) in r.comments" :key="i" style="margin-top:8px;font-size:.88rem;padding:10px 12px;border-radius:14px;background:var(--cream)"><b v-if="c.author" style="display:block;font-size:.8rem">{{ c.author }}</b>{{ c.text }} <small class="muted">· {{ timeAgo(c.date) }}</small></div>
           </div>
         </div>
       </div>

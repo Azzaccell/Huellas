@@ -1,6 +1,6 @@
 /* HUELLAS — app (Vue 3 + GSAP/ScrollTrigger + Lenis + Leaflet), sin build step */
 const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, markRaw } = Vue;
-const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE } = window.HUELLAS;
+const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE, actions, status, canEdit } = window.HUELLAS;
 gsap.registerPlugin(ScrollTrigger);
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -43,7 +43,8 @@ addEventListener('click', e => {
 /* ---------- UI global: modal, toast ---------- */
 const ui = reactive({ modal: null, toast: '' });
 let toastT;
-const toast = msg => { ui.toast = msg; clearTimeout(toastT); toastT = setTimeout(() => (ui.toast = ''), 2600); };
+const toast = msg => { ui.toast = msg; clearTimeout(toastT); toastT = setTimeout(() => (ui.toast = ''), 3200); };
+window.HUELLAS.onError = toast;
 const openAlert = id => { ui.modal = id; lenis.stop(); };
 const closeAlert = () => { ui.modal = null; lenis.start(); };
 
@@ -672,14 +673,14 @@ app.component('page-map', {
     watch(list, draw);
     onBeforeUnmount(() => { document.removeEventListener('click', onPopupClick, true); map && map.remove(); });
 
-    return { root, el, f, list, sel, focus, locate, TYPES, SPECIES, timeAgo };
+    return { root, el, f, list, sel, focus, locate, TYPES, SPECIES, timeAgo, status };
   },
   template: `
   <main class="page" ref="root" style="padding-bottom:30px">
     <div class="wrap">
       <div class="mapwrap">
         <aside class="mapside">
-          <div><span class="eyebrow">Mapa en vivo</span><h1 class="h-md" style="margin-top:8px">Santa Cruz de la Sierra</h1></div>
+          <div><span class="eyebrow">Mapa en vivo<template v-if="status.online"> · <span class="live-dot"></span>conectado</template></span><h1 class="h-md" style="margin-top:8px">Santa Cruz de la Sierra</h1></div>
           <input class="input" v-model="f.q" placeholder="🔎 Buscar por nombre, raza, barrio, color…">
           <div class="filters">
             <button class="chip" :class="{on:f.type==='todos'}" @click="f.type='todos'">Todos</button>
@@ -738,15 +739,19 @@ app.component('page-publish', {
       marker.setLatLng(ZONES[z]); map.flyTo(ZONES[z], 15, { duration: .8 });
     });
     const valid = computed(() => form.name.trim() && form.contact.replace(/\D/g, '').length >= 7);
-    const submit = () => {
+    const sending = ref(false);
+    const submit = async () => {
       if (!valid.value) return toast('Completa el nombre y un WhatsApp válido');
-      const id = 'r' + Date.now();
-      const digits = form.contact.replace(/\D/g, '');
-      state.reports.unshift({ ...form, id, contact: digits.startsWith('591') ? digits : '591' + digits, date: Date.now(), likes: 0, liked: false, comments: [], mine: true });
-      if (form.petId) { const p = state.pets.find(x => x.id === form.petId); if (p) p.lost = true; }
-      toast('✅ ¡Alerta publicada! Ya está en el mapa');
-      go('/mapa?focus=' + id);
-      setTimeout(() => openAlert(id), 1700);
+      if (sending.value) return;
+      sending.value = true;
+      try {
+        const id = await actions.addReport({ ...form });
+        toast('✅ ¡Alerta publicada! Ya está en el mapa');
+        go('/mapa?focus=' + id);
+        setTimeout(() => openAlert(id), 1700);
+      } catch (e) {
+        toast('No se pudo publicar: ' + (e.message || 'revisa tu conexión e inténtalo de nuevo'));
+      } finally { sending.value = false; }
     };
 
     usePageFx(root, () => {
@@ -764,7 +769,7 @@ app.component('page-publish', {
     });
     onBeforeUnmount(() => map && map.remove());
 
-    return { root, pick, fileIn, form, types, SPECIES, ZONES, TYPES, onFile, submit, valid, hasPoint };
+    return { root, pick, fileIn, form, types, SPECIES, ZONES, TYPES, onFile, submit, valid, hasPoint, sending };
   },
   template: `
   <main class="page" ref="root">
@@ -804,7 +809,7 @@ app.component('page-publish', {
           </div>
           <div class="field" v-if="form.type==='perdido'"><label>Recompensa (opcional)</label><input class="input" v-model="form.reward" placeholder="Ej. Bs 300"></div>
           <div class="field" :class="{'field--full': form.type!=='perdido'}"><label>Tu WhatsApp *</label><input class="input" v-model="form.contact" inputmode="tel" placeholder="7XXXXXXX"></div>
-          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center" :disabled="!valid">Publicar alerta en el mapa 🐾</button></div>
+          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center" :disabled="!valid || sending">{{ sending ? 'Publicando…' : 'Publicar alerta en el mapa 🐾' }}</button></div>
         </form>
         <aside class="preview-sticky">
           <p class="eyebrow" style="margin-bottom:12px">Vista previa</p>
@@ -832,7 +837,7 @@ app.component('page-community', {
     const feed = computed(() => [...state.reports].sort((a, b) => b.date - a.date));
     const urgent = computed(() => state.reports.filter(r => r.type === 'perdido').slice(0, 4));
     const happy = computed(() => state.reports.filter(r => r.type === 'reunido'));
-    const like = r => { r.liked = !r.liked; r.likes += r.liked ? 1 : -1; };
+    const like = r => actions.toggleLike(r);
     usePageFx(root, () => intro('.page__head > *, .feed-tabs', { y: 40, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
     watch(tab, () => nextTick(() => {
       gsap.fromTo(root.value.querySelectorAll('.tabpane > *'), { y: 40, opacity: 0 }, { y: 0, opacity: 1, stagger: .05, duration: .7, ease: 'expo.out' });
@@ -911,17 +916,23 @@ app.component('page-pet', {
   setup() {
     const root = ref(null);
     const pet = computed(() => state.pets.find(p => p.id === route.value.params.id));
-    const following = ref(false);
-    const follow = () => { following.value = !following.value; pet.value.followers += following.value ? 1 : -1; };
+    const following = ref((state.user.followed || []).includes(route.value.params.id));
+    const follow = async () => { following.value = await actions.toggleFollow(pet.value); };
     const alert = computed(() => pet.value && state.reports.find(r => r.type === 'perdido' && (r.petId === pet.value.id || r.name === pet.value.name)));
-    const markHome = () => { pet.value.lost = false; if (alert.value) alert.value.type = 'reunido'; toast('💚 ¡Qué alegría! Marcada como en casa'); };
+    const markHome = async () => {
+      try {
+        if (alert.value && canEdit(alert.value)) await actions.setReportType(alert.value, 'reunido');
+        await actions.setPetLost(pet.value, false);
+        toast('💚 ¡Qué alegría! Marcada como en casa');
+      } catch (e) { toast('No se pudo actualizar: ' + e.message); }
+    };
     // QR decorativo determinístico a partir del id
     const qr = computed(() => { let s = [...(pet.value?.id || 'x')].reduce((a, c) => a * 31 + c.charCodeAt(0), 7); return Array.from({ length: 81 }, () => ((s = (s * 9301 + 49297) % 233280) / 233280) > .5); });
     usePageFx(root, () => {
       gsap.from('.profile__media', { clipPath: 'inset(100% 0 0 0 round 28px)', duration: 1.3, ease: 'expo.inOut', delay: .1 });
       intro('.profile__info > *', { y: 40, opacity: 0, stagger: .07, duration: 1, ease: 'expo.out', delay: .4 });
     });
-    return { root, pet, following, follow, alert, markHome, qr, share, openAlert, SPECIES };
+    return { root, pet, following, follow, alert, markHome, qr, share, openAlert, SPECIES, canEdit };
   },
   template: `
   <main class="page" ref="root">
@@ -942,10 +953,10 @@ app.component('page-pet', {
           <div class="traits" style="margin-bottom:26px"><span v-for="t in pet.traits" :key="t" style="font-size:.9rem;padding:8px 14px">{{ t }}</span></div>
           <div class="flex">
             <button class="btn" :class="following ? 'btn--ghost' : ''" @click="follow">{{ following ? '✓ Siguiendo' : '+ Seguir' }}</button>
-            <a v-if="!pet.lost" :href="'#/publicar?pet='+pet.id" class="btn btn--orange">🚨 Reportar como perdida</a>
-            <template v-else>
+            <a v-if="!pet.lost && canEdit(pet)" :href="'#/publicar?pet='+pet.id" class="btn btn--orange">🚨 Reportar como perdida</a>
+            <template v-else-if="pet.lost">
               <button v-if="alert" class="btn btn--orange" @click="openAlert(alert.id)">Ver alerta</button>
-              <button class="btn btn--ghost" @click="markHome">💚 Ya volvió a casa</button>
+              <button v-if="canEdit(pet)" class="btn btn--ghost" @click="markHome">💚 Ya volvió a casa</button>
             </template>
             <button class="btn btn--ghost" @click="share(pet.name+' en HUELLAS','#/mascota/'+pet.id)">↗ Compartir</button>
           </div>
@@ -967,16 +978,22 @@ app.component('page-register', {
     const accents = ['#FF6B35', '#7B61FF', '#1DBF73', '#FFB020', '#FF4D4D'];
     const form = reactive({ name: '', species: 'perro', breed: '', age: '', zone: 'Centro', owner: state.user.name || '', bio: '', traits: '', photo: null, accent: accents[0] });
     const onFile = async e => { const f = e.target.files[0]; if (f) form.photo = await readImage(f, 800); };
-    const submit = () => {
+    const sending = ref(false);
+    const submit = async () => {
       if (!form.name.trim()) return toast('Ponle un nombre a tu mascota');
-      const id = 'p' + Date.now();
+      if (sending.value) return;
+      sending.value = true;
       state.user.name = form.owner;
-      state.pets.unshift({ ...form, id, traits: form.traits.split(',').map(t => t.trim()).filter(Boolean), followers: 0, emoji: SPECIES[form.species], mine: true });
-      toast('🎉 ¡Perfil creado! Bienvenido a la manada');
-      go('/mascota/' + id);
+      try {
+        const id = await actions.addPet({ ...form, traits: form.traits.split(',').map(t => t.trim()).filter(Boolean) });
+        toast('🎉 ¡Perfil creado! Bienvenido a la manada');
+        go('/mascota/' + id);
+      } catch (e) {
+        toast('No se pudo crear el perfil: ' + (e.message || 'revisa tu conexión'));
+      } finally { sending.value = false; }
     };
     usePageFx(root, () => intro('.page__head > *, .reg > *', { y: 50, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
-    return { root, fileIn, form, accents, onFile, submit, SPECIES, ZONES };
+    return { root, fileIn, form, accents, onFile, submit, SPECIES, ZONES, sending };
   },
   template: `
   <main class="page" ref="root">
@@ -1008,7 +1025,7 @@ app.component('page-register', {
           <div class="field field--full"><label>Color de su perfil</label>
             <div class="flex"><button type="button" v-for="c in accents" :key="c" @click="form.accent=c" :style="{width:'40px',height:'40px',borderRadius:'50%',background:c,boxShadow:form.accent===c?'0 0 0 3px #fff, 0 0 0 5px '+c:'none'}"></button></div>
           </div>
-          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center">Crear perfil 🐾</button></div>
+          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center" :disabled="sending">{{ sending ? 'Creando…' : 'Crear perfil 🐾' }}</button></div>
         </form>
         <aside class="preview-sticky">
           <p class="eyebrow" style="margin-bottom:12px">Así se verá</p>
@@ -1035,14 +1052,26 @@ app.component('alert-modal', {
     const r = computed(() => state.reports.find(x => x.id === props.id));
     const m = computed(() => (r.value ? matches(r.value).slice(0, 3) : []));
     const comment = ref('');
-    const send = () => { if (!comment.value.trim()) return; r.value.comments.push({ text: comment.value.trim(), date: Date.now() }); comment.value = ''; toast('🙌 Gracias por ayudar'); };
-    const reunite = () => { r.value.type = 'reunido'; toast('💚 ¡Reencuentro registrado!'); };
-    const remove = () => { const i = state.reports.findIndex(x => x.id === props.id); state.reports.splice(i, 1); emit('close'); toast('Alerta eliminada'); };
+    const send = async () => {
+      const text = comment.value.trim(); if (!text) return;
+      try { await actions.addComment(r.value, text); comment.value = ''; toast('🙌 Gracias por ayudar'); }
+      catch (e) { toast('No se pudo enviar: ' + e.message); }
+    };
+    const reunite = async () => {
+      try { await actions.setReportType(r.value, 'reunido'); toast('💚 ¡Reencuentro registrado!'); }
+      catch (e) { toast('No se pudo actualizar: ' + e.message); }
+    };
+    const confirmDel = ref(false);
+    const remove = async () => {
+      if (!confirmDel.value) { confirmDel.value = true; return; }
+      try { await actions.removeReport(props.id); emit('close'); toast('Alerta eliminada'); }
+      catch (e) { toast('No se pudo eliminar: ' + e.message); }
+    };
     const close = () => gsap.to(box.value, { y: 40, opacity: 0, scale: .96, duration: .3, ease: 'power2.in', onComplete: () => emit('close') });
     const onKey = e => e.key === 'Escape' && close();
     onMounted(() => { addEventListener('keydown', onKey); intro(box.value, { y: 60, opacity: 0, scale: .94, duration: .7, ease: 'expo.out' }); });
     onBeforeUnmount(() => removeEventListener('keydown', onKey));
-    return { box, r, m, comment, send, reunite, remove, close, TYPES, timeAgo, waLink, openAlert, go };
+    return { box, r, m, comment, send, reunite, remove, confirmDel, canEdit, close, TYPES, timeAgo, waLink, openAlert, go };
   },
   template: `
     <div class="modal" v-if="r">
@@ -1070,8 +1099,8 @@ app.component('alert-modal', {
           <div class="flex">
             <a v-if="r.type!=='reunido'" :href="waLink(r)" target="_blank" rel="noopener" class="btn btn--orange btn--sm">💬 WhatsApp</a>
             <a :href="'#/mapa?focus='+r.id" class="btn btn--ghost btn--sm" @click="close">🗺️ Mapa</a>
-            <button v-if="r.type!=='reunido'" class="btn btn--ghost btn--sm" @click="reunite">💚 Reunido</button>
-            <button v-if="r.mine" class="btn btn--ghost btn--sm" @click="remove">🗑️</button>
+            <button v-if="r.type!=='reunido' && canEdit(r)" class="btn btn--ghost btn--sm" @click="reunite">💚 Reunido</button>
+            <button v-if="r.mine" class="btn btn--ghost btn--sm" @click="remove">{{ confirmDel ? '¿Eliminar? Toca otra vez' : '🗑️' }}</button>
           </div>
           <div v-if="r.type!=='reunido'">
             <p style="font-weight:700;margin:6px 0">👀 ¿La viste? Cuéntanos</p>

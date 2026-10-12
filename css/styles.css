@@ -270,6 +270,7 @@ footer.foot{padding:70px 0 120px;color:var(--ink-2)}
 .pop h4{font-family:var(--f-display);font-size:1.15rem;margin-bottom:2px}
 .pop p{margin:0!important;color:var(--muted);font-size:.82rem}
 .pop button{margin-top:10px;padding:8px 14px;border-radius:999px;background:var(--night);color:#fff;font-weight:700;font-size:.82rem}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mint);margin-right:6px;animation:ring 1.6s ease-in-out infinite;vertical-align:middle}
 .tiles{filter:saturate(.75) sepia(.12) brightness(1.03)}
 .tiles-dark{filter:invert(1) hue-rotate(200deg) saturate(.4) brightness(.85) contrast(.9)}
 .thumb .pet-card__emoji{font-size:inherit}

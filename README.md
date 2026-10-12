@@ -26,6 +26,24 @@ Genera dos archivos que llevan el CSS y el JS dentro:
 Ambas intentan cargar OpenStreetMap. Si no hay internet o el visor bloquea las teselas, muestran el mapa dibujado de Santa Cruz, con los anillos, las radiales y el río Piraí.
 Cada vez que cambies algo en `css/` o `js/`, vuelve a correr `node build.js`.
 
+## Base de datos compartida (Supabase)
+
+Sin configurar, cada visitante ve solo sus propios datos. Con Supabase, todos ven las mismas alertas en tiempo real.
+
+1. Crea un proyecto gratis en https://supabase.com, con la región **South America (São Paulo)**.
+2. En **SQL Editor** pega el contenido de [`supabase/schema.sql`](supabase/schema.sql) y presiona **Run**. Eso crea las tablas, las reglas de seguridad, el espacio para fotos, el tiempo real y los datos de ejemplo.
+3. En **Authentication → Sign In / Providers**, activa **Allow anonymous sign-ins**. Así cada visitante recibe una sesión anónima y solo puede editar o borrar lo que publicó.
+4. En **Project Settings → API**, copia la **Project URL** y la **anon / publishable key** a [`js/config.js`](js/config.js).
+5. Ejecuta `node build.js` y luego haz `git push`.
+
+Las reglas de seguridad (Row Level Security) se definen en `schema.sql`:
+
+- Todos pueden leer.
+- Para escribir hace falta una sesión.
+- Cada quien edita y borra solo lo suyo.
+- Los "me gusta" y los seguidores pasan por funciones que solo suman o restan 1.
+- Las fotos se suben a la carpeta de cada usuario, con un máximo de 2 MB.
+
 ## Stack (mismo enfoque que dontboardme.com)
 
 - **Vue 3**: componentes reactivos y router por hash

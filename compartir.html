@@ -283,6 +283,7 @@ footer.foot{padding:70px 0 120px;color:var(--ink-2)}
 .pop h4{font-family:var(--f-display);font-size:1.15rem;margin-bottom:2px}
 .pop p{margin:0!important;color:var(--muted);font-size:.82rem}
 .pop button{margin-top:10px;padding:8px 14px;border-radius:999px;background:var(--night);color:#fff;font-weight:700;font-size:.82rem}
+.live-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--mint);margin-right:6px;animation:ring 1.6s ease-in-out infinite;vertical-align:middle}
 .tiles{filter:saturate(.75) sepia(.12) brightness(1.03)}
 .tiles-dark{filter:invert(1) hue-rotate(200deg) saturate(.4) brightness(.85) contrast(.9)}
 .thumb .pet-card__emoji{font-size:inherit}
@@ -444,6 +445,7 @@ textarea.input{resize:vertical;min-height:110px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
 <script src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+
 <script>
 /* HUELLAS — datos semilla y store persistente (localStorage) */
 window.HUELLAS = (() => {
@@ -561,14 +563,198 @@ window.HUELLAS = (() => {
     return `hace ${d} día${d > 1 ? 's' : ''}`;
   };
 
-  return { CENTER, ZONES, TYPES, SPECIES, state, reset, km, matches, timeAgo, M, LITE };
+  return { CENTER, ZONES, TYPES, SPECIES, state, reset, km, matches, timeAgo, M, LITE, lite };
+})();
+
+</script>
+<script>
+/* HUELLAS — acciones de datos. Modo local (localStorage) o en línea (Supabase + tiempo real).
+   Toda la app escribe a través de HUELLAS.actions; así el mismo código sirve en ambos modos. */
+(() => {
+  const H = window.HUELLAS, { state } = H;
+  const cfg = window.HUELLAS_CONFIG || {};
+  const sb = cfg.supabaseUrl && cfg.supabaseKey && window.supabase
+    ? window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey, { auth: { persistSession: true } })
+    : null;
+
+  const status = Vue.reactive({ online: false, connecting: !!sb, uid: null });
+  const notify = msg => H.onError && H.onError(msg);
+  const liked = new Set(state.user.liked || []);
+  const followed = new Set(state.user.followed || []);
+  const remember = () => { state.user.liked = [...liked]; state.user.followed = [...followed]; };
+
+  // ---------- conversión fila de la base ↔ objeto de la app ----------
+  const toReport = row => H.lite([{
+    id: row.id, type: row.type, species: row.species, name: row.name, breed: row.breed || '', color: row.color || '',
+    zone: row.zone || '', lat: row.lat, lng: row.lng, desc: row.description || '', reward: row.reward || '',
+    contact: row.contact || '', photo: row.photo, video: row.video, petId: row.pet_id, likes: row.likes,
+    date: Date.parse(row.created_at), comments: [], liked: liked.has(row.id), mine: !!status.uid && row.user_id === status.uid,
+  }])[0];
+  const toPet = row => H.lite([{
+    id: row.id, name: row.name, species: row.species, breed: row.breed || '', age: row.age || '', owner: row.owner || '',
+    zone: row.zone || '', bio: row.bio || '', traits: row.traits || [], photo: row.photo, video: row.video,
+    accent: row.accent || '#FF6B35', followers: row.followers, lost: row.lost, mine: !!status.uid && row.user_id === status.uid,
+  }])[0];
+  const toComment = row => ({ id: row.id, text: row.text, date: Date.parse(row.created_at) });
+
+  const digits = c => { const d = String(c || '').replace(/\D/g, ''); return d.startsWith('591') ? d : '591' + d; };
+
+  // Sube una foto (data URL comprimida por la app) a Storage y devuelve su URL pública
+  async function uploadPhoto(dataUrl) {
+    if (!dataUrl || !dataUrl.startsWith('data:')) return dataUrl || null;
+    const blob = await (await fetch(dataUrl)).blob();
+    const path = `${status.uid}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}.jpg`;
+    const { error } = await sb.storage.from('fotos').upload(path, blob, { contentType: 'image/jpeg' });
+    if (error) throw error;
+    return sb.storage.from('fotos').getPublicUrl(path).data.publicUrl;
+  }
+
+  // ---------- carga inicial + tiempo real ----------
+  async function connect() {
+    try {
+      let { data: { session } } = await sb.auth.getSession();
+      if (!session) {
+        const res = await sb.auth.signInAnonymously();
+        if (res.error) throw res.error;
+        session = res.data.session;
+      }
+      status.uid = session.user.id;
+
+      const [reports, pets, comments] = await Promise.all([
+        sb.from('reports').select('*').order('created_at', { ascending: false }).limit(500),
+        sb.from('pets').select('*').order('created_at', { ascending: true }).limit(500),
+        sb.from('comments').select('*').order('created_at', { ascending: true }).limit(3000),
+      ]);
+      const err = reports.error || pets.error || comments.error;
+      if (err) throw err;
+
+      const list = reports.data.map(toReport);
+      const byId = Object.fromEntries(list.map(r => [r.id, r]));
+      comments.data.forEach(c => byId[c.report_id] && byId[c.report_id].comments.push(toComment(c)));
+      state.reports = list;
+      state.pets = pets.data.map(toPet);
+      status.online = true;
+      subscribe();
+    } catch (e) {
+      console.warn('HUELLAS sin conexión a la base de datos:', e);
+      notify('Sin conexión con la comunidad: mostrando datos guardados en este equipo');
+    } finally {
+      status.connecting = false;
+    }
+  }
+
+  function subscribe() {
+    sb.channel('huellas')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, ({ eventType, new: row, old }) => {
+        const i = state.reports.findIndex(r => r.id === (row && row.id) || r.id === (old && old.id));
+        if (eventType === 'DELETE') { if (i > -1) state.reports.splice(i, 1); return; }
+        const r = toReport(row);
+        if (i > -1) Object.assign(state.reports[i], { ...r, comments: state.reports[i].comments, liked: state.reports[i].liked });
+        else state.reports.unshift(r);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'pets' }, ({ eventType, new: row, old }) => {
+        const i = state.pets.findIndex(p => p.id === (row && row.id) || p.id === (old && old.id));
+        if (eventType === 'DELETE') { if (i > -1) state.pets.splice(i, 1); return; }
+        if (i > -1) Object.assign(state.pets[i], toPet(row)); else state.pets.unshift(toPet(row));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'comments' }, ({ new: row }) => {
+        const r = state.reports.find(x => x.id === row.report_id);
+        if (r && !r.comments.some(c => c.id === row.id)) r.comments.push(toComment(row));
+      })
+      .subscribe();
+  }
+
+  // ---------- acciones ----------
+  const local = {
+    async addReport(form) {
+      const id = 'r' + Date.now();
+      state.reports.unshift({ ...form, id, contact: digits(form.contact), date: Date.now(), likes: 0, liked: false, comments: [], mine: true });
+      if (form.petId) { const p = state.pets.find(x => x.id === form.petId); if (p) p.lost = true; }
+      return id;
+    },
+    async addPet(form) {
+      const id = 'p' + Date.now();
+      state.pets.unshift({ ...form, id, followers: 0, mine: true });
+      return id;
+    },
+    async toggleLike(r) { r.liked = !r.liked; r.likes += r.liked ? 1 : -1; r.liked ? liked.add(r.id) : liked.delete(r.id); remember(); },
+    async toggleFollow(p) { const on = !followed.has(p.id); on ? followed.add(p.id) : followed.delete(p.id); p.followers += on ? 1 : -1; remember(); return on; },
+    async addComment(r, text) { r.comments.push({ id: Date.now(), text, date: Date.now() }); },
+    async setReportType(r, type) { r.type = type; },
+    async setPetLost(p, lost) { p.lost = lost; },
+    async removeReport(id) { const i = state.reports.findIndex(x => x.id === id); if (i > -1) state.reports.splice(i, 1); },
+  };
+
+  const remote = {
+    async addReport(form) {
+      const photo = await uploadPhoto(form.photo);
+      const { data, error } = await sb.from('reports').insert({
+        type: form.type, species: form.species, name: form.name.trim(), breed: form.breed, color: form.color, zone: form.zone,
+        lat: form.lat, lng: form.lng, description: form.desc, reward: form.type === 'perdido' ? form.reward : null,
+        contact: digits(form.contact), photo, video: form.video || null, pet_id: form.petId || null,
+      }).select().single();
+      if (error) throw error;
+      if (!state.reports.some(r => r.id === data.id)) state.reports.unshift(toReport(data));
+      if (form.petId) { const p = state.pets.find(x => x.id === form.petId); if (p && p.mine) await remote.setPetLost(p, true); }
+      return data.id;
+    },
+    async addPet(form) {
+      const photo = await uploadPhoto(form.photo);
+      const { data, error } = await sb.from('pets').insert({
+        name: form.name.trim(), species: form.species, breed: form.breed, age: form.age, owner: form.owner, zone: form.zone,
+        bio: form.bio, traits: form.traits, photo, accent: form.accent,
+      }).select().single();
+      if (error) throw error;
+      if (!state.pets.some(p => p.id === data.id)) state.pets.unshift(toPet(data));
+      return data.id;
+    },
+    async toggleLike(r) {
+      await local.toggleLike(r);
+      const { data, error } = await sb.rpc('like_report', { rid: r.id, delta: r.liked ? 1 : -1 });
+      if (!error && typeof data === 'number') r.likes = data;
+    },
+    async toggleFollow(p) {
+      const on = await local.toggleFollow(p);
+      const { data, error } = await sb.rpc('follow_pet', { pid: p.id, delta: on ? 1 : -1 });
+      if (!error && typeof data === 'number') p.followers = data;
+      return on;
+    },
+    async addComment(r, text) {
+      const { data, error } = await sb.from('comments').insert({ report_id: r.id, text }).select().single();
+      if (error) throw error;
+      if (!r.comments.some(c => c.id === data.id)) r.comments.push(toComment(data));
+    },
+    async setReportType(r, type) {
+      const { error } = await sb.from('reports').update({ type }).eq('id', r.id);
+      if (error) throw error;
+      r.type = type;
+    },
+    async setPetLost(p, lost) {
+      const { error } = await sb.from('pets').update({ lost }).eq('id', p.id);
+      if (error) throw error;
+      p.lost = lost;
+    },
+    async removeReport(id) {
+      const { error } = await sb.from('reports').delete().eq('id', id);
+      if (error) throw error;
+      await local.removeReport(id);
+    },
+  };
+
+  // En línea solo si la conexión funcionó; si no, todo sigue en modo local
+  const actions = Object.fromEntries(Object.keys(local).map(k => [k, (...a) => (status.online ? remote : local)[k](...a)]));
+  // ¿Puede esta persona editar la alerta/mascota? En local: siempre. En línea: solo si es suya.
+  const canEdit = item => !status.online || !!item.mine;
+
+  Object.assign(H, { actions, status, canEdit });
+  if (sb) connect();
 })();
 
 </script>
 <script>
 /* HUELLAS — app (Vue 3 + GSAP/ScrollTrigger + Lenis + Leaflet), sin build step */
 const { createApp, ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick, markRaw } = Vue;
-const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE } = window.HUELLAS;
+const { state, TYPES, SPECIES, ZONES, CENTER, matches, timeAgo, km, M, LITE, actions, status, canEdit } = window.HUELLAS;
 gsap.registerPlugin(ScrollTrigger);
 
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -611,7 +797,8 @@ addEventListener('click', e => {
 /* ---------- UI global: modal, toast ---------- */
 const ui = reactive({ modal: null, toast: '' });
 let toastT;
-const toast = msg => { ui.toast = msg; clearTimeout(toastT); toastT = setTimeout(() => (ui.toast = ''), 2600); };
+const toast = msg => { ui.toast = msg; clearTimeout(toastT); toastT = setTimeout(() => (ui.toast = ''), 3200); };
+window.HUELLAS.onError = toast;
 const openAlert = id => { ui.modal = id; lenis.stop(); };
 const closeAlert = () => { ui.modal = null; lenis.start(); };
 
@@ -1240,14 +1427,14 @@ app.component('page-map', {
     watch(list, draw);
     onBeforeUnmount(() => { document.removeEventListener('click', onPopupClick, true); map && map.remove(); });
 
-    return { root, el, f, list, sel, focus, locate, TYPES, SPECIES, timeAgo };
+    return { root, el, f, list, sel, focus, locate, TYPES, SPECIES, timeAgo, status };
   },
   template: `
   <main class="page" ref="root" style="padding-bottom:30px">
     <div class="wrap">
       <div class="mapwrap">
         <aside class="mapside">
-          <div><span class="eyebrow">Mapa en vivo</span><h1 class="h-md" style="margin-top:8px">Santa Cruz de la Sierra</h1></div>
+          <div><span class="eyebrow">Mapa en vivo<template v-if="status.online"> · <span class="live-dot"></span>conectado</template></span><h1 class="h-md" style="margin-top:8px">Santa Cruz de la Sierra</h1></div>
           <input class="input" v-model="f.q" placeholder="🔎 Buscar por nombre, raza, barrio, color…">
           <div class="filters">
             <button class="chip" :class="{on:f.type==='todos'}" @click="f.type='todos'">Todos</button>
@@ -1306,15 +1493,19 @@ app.component('page-publish', {
       marker.setLatLng(ZONES[z]); map.flyTo(ZONES[z], 15, { duration: .8 });
     });
     const valid = computed(() => form.name.trim() && form.contact.replace(/\D/g, '').length >= 7);
-    const submit = () => {
+    const sending = ref(false);
+    const submit = async () => {
       if (!valid.value) return toast('Completa el nombre y un WhatsApp válido');
-      const id = 'r' + Date.now();
-      const digits = form.contact.replace(/\D/g, '');
-      state.reports.unshift({ ...form, id, contact: digits.startsWith('591') ? digits : '591' + digits, date: Date.now(), likes: 0, liked: false, comments: [], mine: true });
-      if (form.petId) { const p = state.pets.find(x => x.id === form.petId); if (p) p.lost = true; }
-      toast('✅ ¡Alerta publicada! Ya está en el mapa');
-      go('/mapa?focus=' + id);
-      setTimeout(() => openAlert(id), 1700);
+      if (sending.value) return;
+      sending.value = true;
+      try {
+        const id = await actions.addReport({ ...form });
+        toast('✅ ¡Alerta publicada! Ya está en el mapa');
+        go('/mapa?focus=' + id);
+        setTimeout(() => openAlert(id), 1700);
+      } catch (e) {
+        toast('No se pudo publicar: ' + (e.message || 'revisa tu conexión e inténtalo de nuevo'));
+      } finally { sending.value = false; }
     };
 
     usePageFx(root, () => {
@@ -1332,7 +1523,7 @@ app.component('page-publish', {
     });
     onBeforeUnmount(() => map && map.remove());
 
-    return { root, pick, fileIn, form, types, SPECIES, ZONES, TYPES, onFile, submit, valid, hasPoint };
+    return { root, pick, fileIn, form, types, SPECIES, ZONES, TYPES, onFile, submit, valid, hasPoint, sending };
   },
   template: `
   <main class="page" ref="root">
@@ -1372,7 +1563,7 @@ app.component('page-publish', {
           </div>
           <div class="field" v-if="form.type==='perdido'"><label>Recompensa (opcional)</label><input class="input" v-model="form.reward" placeholder="Ej. Bs 300"></div>
           <div class="field" :class="{'field--full': form.type!=='perdido'}"><label>Tu WhatsApp *</label><input class="input" v-model="form.contact" inputmode="tel" placeholder="7XXXXXXX"></div>
-          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center" :disabled="!valid">Publicar alerta en el mapa 🐾</button></div>
+          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center" :disabled="!valid || sending">{{ sending ? 'Publicando…' : 'Publicar alerta en el mapa 🐾' }}</button></div>
         </form>
         <aside class="preview-sticky">
           <p class="eyebrow" style="margin-bottom:12px">Vista previa</p>
@@ -1400,7 +1591,7 @@ app.component('page-community', {
     const feed = computed(() => [...state.reports].sort((a, b) => b.date - a.date));
     const urgent = computed(() => state.reports.filter(r => r.type === 'perdido').slice(0, 4));
     const happy = computed(() => state.reports.filter(r => r.type === 'reunido'));
-    const like = r => { r.liked = !r.liked; r.likes += r.liked ? 1 : -1; };
+    const like = r => actions.toggleLike(r);
     usePageFx(root, () => intro('.page__head > *, .feed-tabs', { y: 40, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
     watch(tab, () => nextTick(() => {
       gsap.fromTo(root.value.querySelectorAll('.tabpane > *'), { y: 40, opacity: 0 }, { y: 0, opacity: 1, stagger: .05, duration: .7, ease: 'expo.out' });
@@ -1479,17 +1670,23 @@ app.component('page-pet', {
   setup() {
     const root = ref(null);
     const pet = computed(() => state.pets.find(p => p.id === route.value.params.id));
-    const following = ref(false);
-    const follow = () => { following.value = !following.value; pet.value.followers += following.value ? 1 : -1; };
+    const following = ref((state.user.followed || []).includes(route.value.params.id));
+    const follow = async () => { following.value = await actions.toggleFollow(pet.value); };
     const alert = computed(() => pet.value && state.reports.find(r => r.type === 'perdido' && (r.petId === pet.value.id || r.name === pet.value.name)));
-    const markHome = () => { pet.value.lost = false; if (alert.value) alert.value.type = 'reunido'; toast('💚 ¡Qué alegría! Marcada como en casa'); };
+    const markHome = async () => {
+      try {
+        if (alert.value && canEdit(alert.value)) await actions.setReportType(alert.value, 'reunido');
+        await actions.setPetLost(pet.value, false);
+        toast('💚 ¡Qué alegría! Marcada como en casa');
+      } catch (e) { toast('No se pudo actualizar: ' + e.message); }
+    };
     // QR decorativo determinístico a partir del id
     const qr = computed(() => { let s = [...(pet.value?.id || 'x')].reduce((a, c) => a * 31 + c.charCodeAt(0), 7); return Array.from({ length: 81 }, () => ((s = (s * 9301 + 49297) % 233280) / 233280) > .5); });
     usePageFx(root, () => {
       gsap.from('.profile__media', { clipPath: 'inset(100% 0 0 0 round 28px)', duration: 1.3, ease: 'expo.inOut', delay: .1 });
       intro('.profile__info > *', { y: 40, opacity: 0, stagger: .07, duration: 1, ease: 'expo.out', delay: .4 });
     });
-    return { root, pet, following, follow, alert, markHome, qr, share, openAlert, SPECIES };
+    return { root, pet, following, follow, alert, markHome, qr, share, openAlert, SPECIES, canEdit };
   },
   template: `
   <main class="page" ref="root">
@@ -1510,10 +1707,10 @@ app.component('page-pet', {
           <div class="traits" style="margin-bottom:26px"><span v-for="t in pet.traits" :key="t" style="font-size:.9rem;padding:8px 14px">{{ t }}</span></div>
           <div class="flex">
             <button class="btn" :class="following ? 'btn--ghost' : ''" @click="follow">{{ following ? '✓ Siguiendo' : '+ Seguir' }}</button>
-            <a v-if="!pet.lost" :href="'#/publicar?pet='+pet.id" class="btn btn--orange">🚨 Reportar como perdida</a>
-            <template v-else>
+            <a v-if="!pet.lost && canEdit(pet)" :href="'#/publicar?pet='+pet.id" class="btn btn--orange">🚨 Reportar como perdida</a>
+            <template v-else-if="pet.lost">
               <button v-if="alert" class="btn btn--orange" @click="openAlert(alert.id)">Ver alerta</button>
-              <button class="btn btn--ghost" @click="markHome">💚 Ya volvió a casa</button>
+              <button v-if="canEdit(pet)" class="btn btn--ghost" @click="markHome">💚 Ya volvió a casa</button>
             </template>
             <button class="btn btn--ghost" @click="share(pet.name+' en HUELLAS','#/mascota/'+pet.id)">↗ Compartir</button>
           </div>
@@ -1535,16 +1732,22 @@ app.component('page-register', {
     const accents = ['#FF6B35', '#7B61FF', '#1DBF73', '#FFB020', '#FF4D4D'];
     const form = reactive({ name: '', species: 'perro', breed: '', age: '', zone: 'Centro', owner: state.user.name || '', bio: '', traits: '', photo: null, accent: accents[0] });
     const onFile = async e => { const f = e.target.files[0]; if (f) form.photo = await readImage(f, 800); };
-    const submit = () => {
+    const sending = ref(false);
+    const submit = async () => {
       if (!form.name.trim()) return toast('Ponle un nombre a tu mascota');
-      const id = 'p' + Date.now();
+      if (sending.value) return;
+      sending.value = true;
       state.user.name = form.owner;
-      state.pets.unshift({ ...form, id, traits: form.traits.split(',').map(t => t.trim()).filter(Boolean), followers: 0, emoji: SPECIES[form.species], mine: true });
-      toast('🎉 ¡Perfil creado! Bienvenido a la manada');
-      go('/mascota/' + id);
+      try {
+        const id = await actions.addPet({ ...form, traits: form.traits.split(',').map(t => t.trim()).filter(Boolean) });
+        toast('🎉 ¡Perfil creado! Bienvenido a la manada');
+        go('/mascota/' + id);
+      } catch (e) {
+        toast('No se pudo crear el perfil: ' + (e.message || 'revisa tu conexión'));
+      } finally { sending.value = false; }
     };
     usePageFx(root, () => intro('.page__head > *, .reg > *', { y: 50, opacity: 0, stagger: .08, duration: 1, ease: 'expo.out', delay: .15 }));
-    return { root, fileIn, form, accents, onFile, submit, SPECIES, ZONES };
+    return { root, fileIn, form, accents, onFile, submit, SPECIES, ZONES, sending };
   },
   template: `
   <main class="page" ref="root">
@@ -1576,7 +1779,7 @@ app.component('page-register', {
           <div class="field field--full"><label>Color de su perfil</label>
             <div class="flex"><button type="button" v-for="c in accents" :key="c" @click="form.accent=c" :style="{width:'40px',height:'40px',borderRadius:'50%',background:c,boxShadow:form.accent===c?'0 0 0 3px #fff, 0 0 0 5px '+c:'none'}"></button></div>
           </div>
-          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center">Crear perfil 🐾</button></div>
+          <div class="field field--full"><button class="btn btn--orange" style="justify-content:center" :disabled="sending">{{ sending ? 'Creando…' : 'Crear perfil 🐾' }}</button></div>
         </form>
         <aside class="preview-sticky">
           <p class="eyebrow" style="margin-bottom:12px">Así se verá</p>
@@ -1603,14 +1806,26 @@ app.component('alert-modal', {
     const r = computed(() => state.reports.find(x => x.id === props.id));
     const m = computed(() => (r.value ? matches(r.value).slice(0, 3) : []));
     const comment = ref('');
-    const send = () => { if (!comment.value.trim()) return; r.value.comments.push({ text: comment.value.trim(), date: Date.now() }); comment.value = ''; toast('🙌 Gracias por ayudar'); };
-    const reunite = () => { r.value.type = 'reunido'; toast('💚 ¡Reencuentro registrado!'); };
-    const remove = () => { const i = state.reports.findIndex(x => x.id === props.id); state.reports.splice(i, 1); emit('close'); toast('Alerta eliminada'); };
+    const send = async () => {
+      const text = comment.value.trim(); if (!text) return;
+      try { await actions.addComment(r.value, text); comment.value = ''; toast('🙌 Gracias por ayudar'); }
+      catch (e) { toast('No se pudo enviar: ' + e.message); }
+    };
+    const reunite = async () => {
+      try { await actions.setReportType(r.value, 'reunido'); toast('💚 ¡Reencuentro registrado!'); }
+      catch (e) { toast('No se pudo actualizar: ' + e.message); }
+    };
+    const confirmDel = ref(false);
+    const remove = async () => {
+      if (!confirmDel.value) { confirmDel.value = true; return; }
+      try { await actions.removeReport(props.id); emit('close'); toast('Alerta eliminada'); }
+      catch (e) { toast('No se pudo eliminar: ' + e.message); }
+    };
     const close = () => gsap.to(box.value, { y: 40, opacity: 0, scale: .96, duration: .3, ease: 'power2.in', onComplete: () => emit('close') });
     const onKey = e => e.key === 'Escape' && close();
     onMounted(() => { addEventListener('keydown', onKey); intro(box.value, { y: 60, opacity: 0, scale: .94, duration: .7, ease: 'expo.out' }); });
     onBeforeUnmount(() => removeEventListener('keydown', onKey));
-    return { box, r, m, comment, send, reunite, remove, close, TYPES, timeAgo, waLink, openAlert, go };
+    return { box, r, m, comment, send, reunite, remove, confirmDel, canEdit, close, TYPES, timeAgo, waLink, openAlert, go };
   },
   template: `
     <div class="modal" v-if="r">
@@ -1638,8 +1853,8 @@ app.component('alert-modal', {
           <div class="flex">
             <a v-if="r.type!=='reunido'" :href="waLink(r)" target="_blank" rel="noopener" class="btn btn--orange btn--sm">💬 WhatsApp</a>
             <a :href="'#/mapa?focus='+r.id" class="btn btn--ghost btn--sm" @click="close">🗺️ Mapa</a>
-            <button v-if="r.type!=='reunido'" class="btn btn--ghost btn--sm" @click="reunite">💚 Reunido</button>
-            <button v-if="r.mine" class="btn btn--ghost btn--sm" @click="remove">🗑️</button>
+            <button v-if="r.type!=='reunido' && canEdit(r)" class="btn btn--ghost btn--sm" @click="reunite">💚 Reunido</button>
+            <button v-if="r.mine" class="btn btn--ghost btn--sm" @click="remove">{{ confirmDel ? '¿Eliminar? Toca otra vez' : '🗑️' }}</button>
           </div>
           <div v-if="r.type!=='reunido'">
             <p style="font-weight:700;margin:6px 0">👀 ¿La viste? Cuéntanos</p>

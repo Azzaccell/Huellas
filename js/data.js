@@ -114,5 +114,5 @@ window.HUELLAS = (() => {
     return `hace ${d} día${d > 1 ? 's' : ''}`;
   };
 
-  return { CENTER, ZONES, TYPES, SPECIES, state, reset, km, matches, timeAgo, M, LITE };
+  return { CENTER, ZONES, TYPES, SPECIES, state, reset, km, matches, timeAgo, M, LITE, lite };
 })();

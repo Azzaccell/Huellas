@@ -1,4 +1,4 @@
-/* 4 PATITAS — acciones de datos. Modo local (localStorage) o en línea (Supabase + tiempo real).
+/* HUELLAS — acciones de datos. Modo local (localStorage) o en línea (Supabase + tiempo real).
    Toda la app escribe a través de HUELLAS.actions; así el mismo código sirve en ambos modos.
    Sesión: anónima por defecto; "Continuar con Google" convierte esa sesión en una cuenta
    (linkIdentity), así lo publicado antes sigue siendo tuyo. */
@@ -29,7 +29,7 @@
   const toPet = row => H.lite([{
     id: row.id, name: row.name, species: row.species, breed: row.breed || '', age: row.age || '', owner: row.owner || '',
     zone: row.zone || '', bio: row.bio || '', traits: row.traits || [], photo: row.photo, video: row.video,
-    accent: row.accent || '#EEDDB9', followers: row.followers, lost: row.lost,
+    accent: row.accent || '#FF6B35', followers: row.followers, lost: row.lost,
     ownerId: row.user_id, mine: !!status.uid && row.user_id === status.uid, author: row.author || '', avatar: row.avatar || '',
   }])[0];
   const toComment = row => ({ id: row.id, text: row.text, date: Date.parse(row.created_at), author: row.author || '', avatar: row.avatar || '' });
@@ -86,7 +86,7 @@
   async function loginGoogle() {
     if (!sb || !status.online) return notify('El inicio de sesión necesita conexión a internet');
     if (!hosted) { location.href = (cfg.siteUrl || '') + '#/cuenta'; return; }
-    if (status.googleReady === false) return notify('El inicio con Google todavía no está activado en 4 Patitas');
+    if (status.googleReady === false) return notify('El inicio con Google todavía no está activado en HUELLAS');
     status.authBusy = true;
     const { data: { session } } = await sb.auth.getSession();
     const opts = { provider: 'google', options: { redirectTo: redirectTo() } };
@@ -109,7 +109,7 @@
     [/not confirmed/i, 'Confirma tu correo con el enlace que te enviamos y vuelve a intentar.'],
     [/rate limit|too many|over_email_send/i, 'Demasiados intentos. Espera unos minutos y prueba de nuevo.'],
     [/invalid.*email|unable to validate email/i, 'Ese correo no parece válido.'],
-    [/signups? not allowed|signup.*disabled/i, 'El registro con correo está desactivado en 4 Patitas.'],
+    [/signups? not allowed|signup.*disabled/i, 'El registro con correo está desactivado en HUELLAS.'],
     [/fetch|network/i, 'Sin conexión. Revisa tu internet.'],
   ];
   const es = e => { const m = (e && (e.code || '') + ' ' + (e.message || '')) || ''; const hit = ES.find(([rx]) => rx.test(m)); return hit ? hit[1] : (e && e.message) || 'Algo salió mal. Inténtalo de nuevo.'; };
@@ -224,7 +224,7 @@
       status.online = true;
       subscribe();
     } catch (e) {
-      console.warn('4 Patitas sin conexión a la base de datos:', e);
+      console.warn('HUELLAS sin conexión a la base de datos:', e);
       notify('Sin conexión con la comunidad: mostrando datos guardados en este equipo');
     } finally {
       status.connecting = false;

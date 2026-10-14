@@ -1,6 +1,5 @@
 # paquete para hosting (se genera con node build.js + zip); demasiado pesado para el repo
 huellas-movil.zip
-4patitas-movil.zip
 node_modules/
 .DS_Store
 Thumbs.db
